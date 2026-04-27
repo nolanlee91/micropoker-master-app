@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PlusCircle, TrendingUp, TrendingDown, Wallet, Target, Trash2, Link, ChevronDown, ChevronUp, CheckSquare, Square } from 'lucide-react'
+import { PlusCircle, Wallet, Trash2, Link, ChevronDown, ChevronUp, CheckSquare, Square } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 
 const C = {
@@ -13,26 +13,77 @@ const C = {
 }
 
 const STAKES_LIST = ['$1/$1','$1/$2','$1/$3','$2/$5','$5/$10']
-const BRM_RULES = {
-  Conservative: { buyins:30, label:'30 Buy-ins' },
-  Standard:     { buyins:20, label:'20 Buy-ins' },
-  Aggressive:   { buyins:15, label:'15 Buy-ins' },
-}
 
-function parseBuyIn(stakes) {
-  const bb = parseFloat(stakes.split('/')[1].replace('$',''))
-  return bb * 100  // standard 100bb buy-in
-}
-
-function parseStakeLabel(stakes) {
-  return stakes
-}
-
-const label = (txt) => (
+const lbl = (txt) => (
   <div style={{ fontSize:'0.56rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'6px' }}>{txt}</div>
 )
 
-// ── Add / Edit Session Modal ──────────────────────────────────────────────────
+// ── Profit Chart ──────────────────────────────────────────────────────────────
+function ProfitChart({ sessions }) {
+  if (sessions.length < 2) return null
+
+  const sorted = [...sessions].sort((a, b) => new Date(a.date) - new Date(b.date))
+  const cumulative = []
+  let running = 0
+  sorted.forEach(s => {
+    running += s.profit || 0
+    cumulative.push(running)
+  })
+
+  const min = Math.min(0, ...cumulative)
+  const max = Math.max(0, ...cumulative)
+  const range = max - min || 1
+  const W = 600, H = 120, PAD = 12
+
+  const points = cumulative.map((v, i) => {
+    const x = PAD + (i / (cumulative.length - 1)) * (W - PAD * 2)
+    const y = PAD + ((max - v) / range) * (H - PAD * 2)
+    return `${x},${y}`
+  })
+
+  const zeroY = PAD + ((max - 0) / range) * (H - PAD * 2)
+  const isProfit = running >= 0
+  const color = isProfit ? C.primary : C.red
+  const lastX = PAD + (W - PAD * 2)
+  const lastY = PAD + ((max - running) / range) * (H - PAD * 2)
+
+  return (
+    <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'12px', padding:'14px 16px', marginBottom:'16px' }}>
+      {lbl('Profit / Loss Curve')}
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', height:'auto', display:'block' }}>
+        {/* Zero line */}
+        <line x1={PAD} y1={zeroY} x2={W - PAD} y2={zeroY} stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="4,4" />
+
+        {/* Area fill */}
+        <defs>
+          <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.01" />
+          </linearGradient>
+        </defs>
+        <polygon
+          points={`${PAD},${H - PAD} ${points.join(' ')} ${W - PAD},${H - PAD}`}
+          fill="url(#chartGrad)"
+        />
+
+        {/* Line */}
+        <polyline points={points.join(' ')} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+
+        {/* Last point dot */}
+        <circle cx={lastX} cy={lastY} r="3" fill={color} />
+      </svg>
+      <div style={{ display:'flex', justifyContent:'space-between', marginTop:'6px' }}>
+        <span style={{ fontSize:'0.58rem', color:C.textMuted }}>{sorted[0]?.date}</span>
+        <span style={{ fontSize:'0.7rem', fontWeight:700, color:isProfit ? C.primary : C.red, fontVariantNumeric:'tabular-nums' }}>
+          {running >= 0 ? '+' : ''}${Math.abs(running).toFixed(0)}
+        </span>
+        <span style={{ fontSize:'0.58rem', color:C.textMuted }}>{sorted[sorted.length-1]?.date}</span>
+      </div>
+    </div>
+  )
+}
+
+// ── Session Modal ─────────────────────────────────────────────────────────────
 function SessionModal({ initial, onSave, onClose }) {
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState(initial || { date:today, stakes:'$1/$2', location:'Live', hours:'', buyIn:'', cashOut:'' })
@@ -77,9 +128,8 @@ function SessionModal({ initial, onSave, onClose }) {
           </div>
         </div>
 
-        {/* Live profit preview */}
         {(form.buyIn || form.cashOut) && (
-          <div style={{ padding:'10px 14px', borderRadius:'8px', background: profit>=0 ? 'rgba(84,233,138,0.08)' : 'rgba(244,112,103,0.08)', border:`1px solid ${profit>=0?'rgba(84,233,138,0.2)':'rgba(244,112,103,0.2)'}` }}>
+          <div style={{ padding:'10px 14px', borderRadius:'8px', background:profit>=0?'rgba(84,233,138,0.08)':'rgba(244,112,103,0.08)', border:`1px solid ${profit>=0?'rgba(84,233,138,0.2)':'rgba(244,112,103,0.2)'}` }}>
             <div style={{ fontSize:'0.58rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'3px' }}>Profit / Loss</div>
             <div style={{ fontSize:'1.4rem', fontWeight:700, letterSpacing:'-0.02em', color:profit>=0?C.primary:C.red, fontVariantNumeric:'tabular-nums' }}>
               {profit>=0?'+':''}${Math.abs(profit).toFixed(0)}
@@ -105,6 +155,7 @@ function SessionModal({ initial, onSave, onClose }) {
 // ── Link Hands Panel ──────────────────────────────────────────────────────────
 const SL = { s:'♠', h:'♥', d:'♦', c:'♣' }
 const SC = { s:'#111', h:'#cc2222', d:'#cc2222', c:'#111' }
+
 function TinyCard({ card }) {
   const r = card.slice(0,-1), s = card.slice(-1)
   return (
@@ -126,7 +177,6 @@ function LinkHandsPanel({ session, allHands, onLink, onClose }) {
         <span style={{ fontSize:'0.75rem', fontWeight:600, color:C.text }}>Link Unassigned Hands</span>
         <button onClick={onClose} style={{ background:'none', border:'none', color:C.textMuted, cursor:'pointer', fontSize:'0.7rem' }}>✕</button>
       </div>
-
       {unassigned.length === 0 ? (
         <div style={{ fontSize:'0.75rem', color:C.textMuted, opacity:0.5, textAlign:'center', padding:'20px 0' }}>No unassigned hands</div>
       ) : (
@@ -137,12 +187,12 @@ function LinkHandsPanel({ session, allHands, onLink, onClose }) {
               <div key={h.id} onClick={() => toggle(h.id)} style={{
                 display:'flex', alignItems:'center', gap:'8px', padding:'8px 10px',
                 borderRadius:'8px', cursor:'pointer',
-                background: isSel ? C.primaryDim : C.surfaceHigh,
-                border:`1px solid ${isSel ? C.primaryBorder : C.border}`,
+                background:isSel?C.primaryDim:C.surfaceHigh,
+                border:`1px solid ${isSel?C.primaryBorder:C.border}`,
               }}>
-                {isSel ? <CheckSquare size={14} color={C.primary} /> : <Square size={14} color={C.textMuted} />}
+                {isSel ? <CheckSquare size={14} color={C.primary}/> : <Square size={14} color={C.textMuted}/>}
                 <span style={{ fontSize:'0.65rem', fontWeight:600, color:C.primary }}>{h.position}</span>
-                <div style={{ display:'flex', gap:'2px' }}>{h.holeCards.map(c => <TinyCard key={c} card={c} />)}</div>
+                <div style={{ display:'flex', gap:'2px' }}>{h.holeCards.map(c => <TinyCard key={c} card={c}/>)}</div>
                 <span style={{ fontSize:'0.65rem', color:h.result>0?C.primary:h.result<0?C.red:C.textMuted, fontWeight:600, marginLeft:'auto' }}>
                   {h.result>0?'+':''}{h.result}bb
                 </span>
@@ -151,7 +201,6 @@ function LinkHandsPanel({ session, allHands, onLink, onClose }) {
           })}
         </div>
       )}
-
       <button onClick={() => { onLink(session.id, [...selected]); onClose() }} style={{
         width:'100%', marginTop:'10px', padding:'10px', borderRadius:'8px', border:'none',
         background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e',
@@ -172,7 +221,7 @@ function SessionCard({ session, allHands, onDelete, onLink, onEdit, onEditHand }
 
   return (
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'12px', overflow:'hidden' }}>
-      <div style={{ height:'2px', background: isWin ? `linear-gradient(90deg,transparent,${C.primary},transparent)` : `linear-gradient(90deg,transparent,${C.red},transparent)` }} />
+      <div style={{ height:'2px', background:isWin?`linear-gradient(90deg,transparent,${C.primary},transparent)`:`linear-gradient(90deg,transparent,${C.red},transparent)` }} />
       <div style={{ padding:'14px 16px' }}>
         <div style={{ display:'flex', alignItems:'center', gap:'10px', justifyContent:'space-between' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'8px', flex:1, flexWrap:'wrap' }}>
@@ -197,9 +246,7 @@ function SessionCard({ session, allHands, onDelete, onLink, onEdit, onEditHand }
           <button onClick={() => onEdit(session)} style={{
             display:'flex', alignItems:'center', gap:'4px', padding:'6px 10px', borderRadius:'6px', border:'none',
             background:C.surfaceHigh, color:C.textMuted, fontSize:'0.65rem', cursor:'pointer', minHeight:'36px',
-          }}>
-            ✏️ Edit
-          </button>
+          }}>✏️ Edit</button>
           <button onClick={() => { setExpanded(v=>!v); setShowLink(false) }} style={{
             display:'flex', alignItems:'center', gap:'4px', padding:'6px 10px', borderRadius:'6px', border:'none',
             background:C.surfaceHigh, color:C.textMuted, fontSize:'0.65rem', cursor:'pointer', minHeight:'36px',
@@ -224,7 +271,7 @@ function SessionCard({ session, allHands, onDelete, onLink, onEdit, onEditHand }
           </button>
         </div>
 
-        {showLink && <LinkHandsPanel session={session} allHands={allHands} onLink={onLink} onClose={()=>setShowLink(false)} />}
+        {showLink && <LinkHandsPanel session={session} allHands={allHands} onLink={onLink} onClose={()=>setShowLink(false)}/>}
 
         {expanded && linked.length > 0 && (
           <div style={{ marginTop:'10px', display:'flex', flexDirection:'column', gap:'6px' }}>
@@ -232,15 +279,14 @@ function SessionCard({ session, allHands, onDelete, onLink, onEdit, onEditHand }
               <div key={h.id} onClick={() => onEditHand && onEditHand(h)} style={{
                 display:'flex', alignItems:'center', gap:'8px', padding:'8px 10px',
                 background:C.surfaceHigh, borderRadius:'8px',
-                cursor: onEditHand ? 'pointer' : 'default',
-                border:`1px solid transparent`,
-                transition:'border-color 0.15s',
+                cursor:onEditHand?'pointer':'default',
+                border:`1px solid transparent`, transition:'border-color 0.15s',
               }}
                 onMouseEnter={e => { if(onEditHand) e.currentTarget.style.borderColor=C.borderHi }}
                 onMouseLeave={e => e.currentTarget.style.borderColor='transparent'}
               >
                 <span style={{ fontSize:'0.6rem', fontWeight:700, color:C.primary }}>{h.position}</span>
-                <div style={{ display:'flex', gap:'2px' }}>{h.holeCards.map(c => <TinyCard key={c} card={c} />)}</div>
+                <div style={{ display:'flex', gap:'2px' }}>{h.holeCards.map(c => <TinyCard key={c} card={c}/>)}</div>
                 <span style={{ fontSize:'0.58rem', color:C.textMuted }}>{h.street}</span>
                 <span style={{ fontSize:'0.68rem', color:h.result>0?C.primary:h.result<0?C.red:C.textMuted, fontWeight:600, marginLeft:'auto' }}>
                   {h.result>0?'+':''}${Math.abs(h.result)}
@@ -258,21 +304,13 @@ function SessionCard({ session, allHands, onDelete, onLink, onEdit, onEditHand }
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function BankrollManager() {
   const navigate = useNavigate()
-  const [sessions,  setSessions]  = useLocalStorage('brm-sessions', [])
-  const [hands,     setHands]     = useLocalStorage('hand-history', [])
-  const [bankroll,  setBankroll]  = useLocalStorage('brm-bankroll', '')
-  const [brmStyle,  setBrmStyle]  = useLocalStorage('brm-style', 'Standard')
-  const [curStakes, setCurStakes] = useLocalStorage('brm-stakes', '$1/$2')
-  const [showModal, setShowModal] = useState(false)
+  const [sessions,    setSessions]    = useLocalStorage('brm-sessions', [])
+  const [hands,       setHands]       = useLocalStorage('hand-history', [])
+  const [showModal,   setShowModal]   = useState(false)
   const [editSession, setEditSession] = useState(null)
-  const [editingBR, setEditingBR] = useState(false)
-  const [brInput,   setBrInput]   = useState('')
-
-  // Store the hand to edit in localStorage so HandHistory picks it up
   const [pendingEditHand, setPendingEditHand] = useLocalStorage('pending-edit-hand', null)
 
   const handleEditHand = (hand) => {
-    // Navigate to history — HandHistory will read pendingEditHand on mount
     setPendingEditHand(hand)
     navigate('/history')
   }
@@ -286,27 +324,13 @@ export default function BankrollManager() {
     return { totalProfit, totalHours, wins, winRate, hourly }
   }, [sessions])
 
-  const currentBR = parseFloat(bankroll)||0
-  const rule = BRM_RULES[brmStyle]
-
-  // Move-up / move-down targets
-  const stakesIdx = STAKES_LIST.indexOf(curStakes)
-  const moveUpStakes = stakesIdx < STAKES_LIST.length-1 ? STAKES_LIST[stakesIdx+1] : null
-  const moveDownStakes = stakesIdx > 0 ? STAKES_LIST[stakesIdx-1] : null
-  const moveUpTarget   = moveUpStakes   ? parseBuyIn(moveUpStakes)   * rule.buyins : null
-  const moveDownTarget = moveDownStakes ? parseBuyIn(moveDownStakes) * rule.buyins : null
-
   const handleLink = (sessionId, handIds) => {
-    // Update session linkedHandIds
     setSessions(prev => prev.map(s => s.id===sessionId ? { ...s, linkedHandIds:handIds } : s))
-    // Mark hands as linked
     setHands(prev => prev.map(h => ({
       ...h,
       sessionId: handIds.includes(h.id) ? sessionId : (h.sessionId===sessionId ? null : h.sessionId)
     })))
   }
-
-  const inputStyle = { width:'100%', padding:'10px 12px', background:C.surfaceHigh, border:`1px solid ${C.border}`, borderRadius:'8px', color:C.text, fontSize:'0.82rem', outline:'none', minHeight:'44px', colorScheme:'dark', boxSizing:'border-box', appearance:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif" }
 
   return (
     <div style={{ padding:'16px', paddingBottom:'120px', maxWidth:'720px', margin:'0 auto', paddingTop:'20px' }}>
@@ -327,87 +351,13 @@ export default function BankrollManager() {
         </button>
       </div>
 
-      {/* Bankroll hero */}
-      <div style={{
-        background:C.surface, border:`1px solid ${C.border}`, borderRadius:'12px', padding:'16px 20px',
-        display:'flex', alignItems:'center', gap:'16px', marginBottom:'16px', position:'relative', overflow:'hidden',
-      }}>
-        <div style={{ position:'absolute', top:0, left:'10%', right:'10%', height:'1px', background:'linear-gradient(90deg,transparent,rgba(84,233,138,0.45),transparent)' }} />
-        <div style={{ width:'36px', height:'36px', borderRadius:'8px', background:'rgba(84,233,138,0.12)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-          <Wallet size={16} color={C.primary}/>
-        </div>
-        <div style={{ flex:1 }}>
-          <div style={{ fontSize:'0.56rem', fontWeight:600, letterSpacing:'0.12em', textTransform:'uppercase', color:C.textMuted, marginBottom:'5px' }}>Total Bankroll</div>
-          {editingBR ? (
-            <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-              <input autoFocus type="number" value={brInput} onChange={e=>setBrInput(e.target.value)}
-                onKeyDown={e=>{ if(e.key==='Enter'){ setBankroll(brInput); setEditingBR(false) }}}
-                style={{ background:'none', border:'none', outline:'none', fontSize:'1.8rem', fontWeight:700, letterSpacing:'-0.03em', color:C.primary, width:'160px', fontFamily:"'Inter',sans-serif", borderBottom:`1.5px solid ${C.primary}`, colorScheme:'dark' }} />
-              <button onClick={()=>{ setBankroll(brInput); setEditingBR(false) }} style={{ padding:'6px 14px', borderRadius:'6px', border:'none', background:'linear-gradient(135deg,#54e98a,#2db866)', color:'#061a0e', fontWeight:700, fontSize:'0.72rem', cursor:'pointer', minHeight:'36px' }}>Save</button>
-            </div>
-          ) : (
-            <div onClick={()=>{ setBrInput(bankroll); setEditingBR(true) }} style={{ cursor:'text', display:'flex', alignItems:'baseline', gap:'12px' }}>
-              <span style={{ fontSize:'1.8rem', fontWeight:700, letterSpacing:'-0.03em', color:C.primary, fontVariantNumeric:'tabular-nums' }}>
-                ${currentBR ? currentBR.toLocaleString() : '—'}
-              </span>
-              {currentBR>0 && stats.totalProfit!==0 && (
-                <span style={{ fontSize:'0.8rem', fontWeight:500, color:stats.totalProfit>=0?C.primary:C.red, opacity:0.7 }}>
-                  {stats.totalProfit>=0?'+':''}${Math.abs(stats.totalProfit).toFixed(0)} sessions
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Current stakes + BRM */}
+      {/* Stats grid */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'16px' }}>
-        <div>
-          <div style={{ fontSize:'0.56rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'6px' }}>Current Stakes</div>
-          <select value={curStakes} onChange={e=>setCurStakes(e.target.value)} style={inputStyle}>
-            {STAKES_LIST.map(s => <option key={s}>{s}</option>)}
-          </select>
-        </div>
-        <div>
-          <div style={{ fontSize:'0.56rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'6px' }}>BRM Style</div>
-          <select value={brmStyle} onChange={e=>setBrmStyle(e.target.value)} style={inputStyle}>
-            {Object.entries(BRM_RULES).map(([k,v]) => <option key={k} value={k}>{k} ({v.label})</option>)}
-          </select>
-        </div>
-      </div>
-
-      {/* Move-up targets */}
-      <div style={{ display:'flex', flexDirection:'column', gap:'6px', marginBottom:'16px' }}>
-        {moveUpTarget && (
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}`, borderRadius:'10px' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-              <TrendingUp size={14} color={C.primary}/>
-              <span style={{ fontSize:'0.75rem', fontWeight:600, color:C.primary }}>Move Up → {moveUpStakes}</span>
-            </div>
-            <div style={{ textAlign:'right' }}>
-              <div style={{ fontSize:'0.82rem', fontWeight:700, color:C.primary }}>${moveUpTarget.toLocaleString()}</div>
-              {currentBR>0 && <div style={{ fontSize:'0.62rem', color:C.textMuted, opacity:0.7 }}>${Math.max(0,moveUpTarget-currentBR).toLocaleString()} to go</div>}
-            </div>
-          </div>
-        )}
-        {moveDownTarget && (
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', background:'rgba(244,112,103,0.06)', border:`1px solid rgba(244,112,103,0.2)`, borderRadius:'10px' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-              <TrendingDown size={14} color={C.red}/>
-              <span style={{ fontSize:'0.75rem', fontWeight:600, color:C.red }}>Move Down → {moveDownStakes}</span>
-            </div>
-            <div style={{ fontSize:'0.82rem', fontWeight:700, color:C.red }}>&lt; ${moveDownTarget.toLocaleString()}</div>
-          </div>
-        )}
-      </div>
-
-      {/* Stats grid — 2 cols on mobile */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'20px' }}>
         {[
-          { label:'Session Profit', value:`${stats.totalProfit>=0?'+':''}$${Math.abs(stats.totalProfit).toFixed(0)}`, color:stats.totalProfit>=0?C.primary:C.red },
-          { label:'Win Rate',       value:`${stats.winRate}%`,    color:C.secondary },
-          { label:'Hourly Rate',    value:`$${stats.hourly}/h`,   color:C.text },
-          { label:'Sessions',       value:sessions.length,        color:C.text },
+          { label:'Total Profit',  value:`${stats.totalProfit>=0?'+':''}$${Math.abs(stats.totalProfit).toFixed(0)}`, color:stats.totalProfit>=0?C.primary:C.red },
+          { label:'Win Rate',      value:`${stats.winRate}%`,   color:C.secondary },
+          { label:'Hourly Rate',   value:`$${stats.hourly}/h`,  color:C.text },
+          { label:'Sessions',      value:sessions.length,       color:C.text },
         ].map(s => (
           <div key={s.label} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'10px', padding:'12px 14px', position:'relative', overflow:'hidden' }}>
             <div style={{ fontSize:'0.55rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'8px' }}>{s.label}</div>
@@ -416,7 +366,10 @@ export default function BankrollManager() {
         ))}
       </div>
 
-      {/* Sessions */}
+      {/* Profit chart */}
+      <ProfitChart sessions={sessions} />
+
+      {/* Session history */}
       <div style={{ marginBottom:'12px' }}>
         <div style={{ fontSize:'0.6rem', fontWeight:600, letterSpacing:'0.12em', textTransform:'uppercase', color:C.textMuted, marginBottom:'10px' }}>Session History</div>
         <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>

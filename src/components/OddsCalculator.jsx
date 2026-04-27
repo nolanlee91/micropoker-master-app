@@ -451,17 +451,22 @@ export default function OddsCalculator() {
         <p style={{ fontSize: '0.72rem', color: '#7D8590' }}>Monte Carlo · 4,000 iterations</p>
       </div>
 
-      {/* Card slots row */}
+      {/* Card slots — players on one row, board below */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <CardDisplay cards={heroCards} label="Your Hand" limit={2} slot="hero" />
-        {villains.map((v, idx) => (
-          <CardDisplay key={idx} cards={v} label={`Villain ${villains.length > 1 ? idx+1 : ''}`} limit={2} slot={idx} onRemove={villains.length > 1 ? () => removeVillain(idx) : null} />
-        ))}
+        {/* Hero + Villains in one row */}
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${1 + villains.length}, 1fr)`, gap: '8px' }}>
+          <CardDisplay cards={heroCards} label="Your Hand" limit={2} slot="hero" />
+          {villains.map((v, idx) => (
+            <CardDisplay key={idx} cards={v} label={`Villain${villains.length > 1 ? ' '+(idx+1) : ''}`} limit={2} slot={idx} onRemove={villains.length > 1 ? () => removeVillain(idx) : null} />
+          ))}
+        </div>
+        {/* Add villain button */}
         {villains.length < 3 && (
           <button onClick={addVillain} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '9px', borderRadius: '8px', border: '1px dashed #30363D', background: 'transparent', color: '#7D8590', fontSize: '0.72rem', cursor: 'pointer', minHeight: '40px' }}>
             <Plus size={13} /> Add Villain
           </button>
         )}
+        {/* Board — full width */}
         <CardDisplay cards={boardCards} label="Board" limit={5} slot="board" />
       </div>
 

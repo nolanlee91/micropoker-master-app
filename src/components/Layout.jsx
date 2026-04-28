@@ -5,9 +5,9 @@ import { History, Wallet, Calculator, BrainCircuit, Spade, Zap } from 'lucide-re
 const NAV = [
   { path: '/history',  label: 'History',  icon: History },
   { path: '/bankroll', label: 'Bankroll', icon: Wallet },
-  { path: '/odds',     label: 'Odds',     icon: Calculator },
-  { path: '/quiz',     label: 'Quiz',     icon: Zap },
   { path: '/coach',    label: 'Coach',    icon: BrainCircuit },
+  { path: '/quiz',     label: 'Quiz',     icon: Zap },
+  { path: '/odds',     label: 'Odds',     icon: Calculator },
 ]
 
 const C = {

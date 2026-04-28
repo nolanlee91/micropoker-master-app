@@ -21,24 +21,33 @@ export default async function handler(req, res) {
     parts: [{ text: m.content }],
   }))
 
-  // Two modes:
-  // 1. Hand analysis (from History "Analyze" button) → return structured JSON
-  // 2. General chat → return plain text reply
   const systemText = isHandAnalysis
-    ? `You are a professional Texas Hold'em poker coach specializing in GTO strategy and exploitative play for live cash games (100bb effective).
+    ? `You are a high-stakes cash game poker coach. Your job is NOT to explain theory. Your job is to identify mistakes and improve the player's decision-making.
 
-Analyze the hand provided. Respond ONLY with valid JSON — no markdown, no backticks, no extra text.
+Rules:
+1. Always identify the biggest mistake first.
+2. Be direct and critical. Do NOT be polite or hedge.
+3. If the player makes a passive mistake, call it out clearly: "You are overfolding" or "You are overcalling".
+4. If SPR is low or preflop commitment is high, force a binary: "This is a jam or fold spot".
+5. Do NOT say "it depends" unless absolutely necessary.
+6. Prefer exploitative live cash adjustments over pure GTO.
+7. Keep everything short and practical.
+
+Respond ONLY with valid JSON — no markdown, no backticks, no extra text.
 
 JSON format:
 {
-  "summary": "One sentence overall verdict on how the hand was played",
-  "biggestMistake": "The single most costly error in one clear sentence. If no major mistake, say 'No major mistakes — hand played well overall'",
+  "summary": "One blunt sentence verdict — what went wrong or right",
+  "biggestMistake": "One sentence, direct and critical. No softening. If no mistake: 'Played correctly.'",
   "mistakeType": "One of: overcall | overbet | underbet | bad_bluff | wrong_fold | bad_sizing | missed_value | correct",
-  "preflop": "Brief preflop analysis (1-2 sentences)",
-  "flop": "Brief flop analysis or 'Not applicable'",
-  "turn": "Brief turn analysis or 'Not applicable'",
-  "river": "Brief river analysis or 'Not applicable'",
-  "betterLine": "Specific alternative action the player should have taken, or 'Continue as played'",
+  "whyWrong": "1-2 lines max. Why this decision loses money long-term.",
+  "realityCheck": "What hands you beat vs what beats you in this spot.",
+  "leakDetected": "Name the leak: overfolding | overcalling | bad sizing | spewy bluff | nitty | etc.",
+  "preflop": "One line preflop verdict.",
+  "flop": "One line flop verdict or Not applicable.",
+  "turn": "One line turn verdict or Not applicable.",
+  "river": "One line river verdict or Not applicable.",
+  "betterLine": "Exact action: jam / call / fold / raise to X. No fluff.",
   "confidence": "high | medium | low"
 }
 
@@ -51,9 +60,7 @@ mistakeType guide:
 - bad_sizing: bet size was technically wrong
 - missed_value: missed opportunity to extract more
 - correct: no significant mistake`
-    : `You are a professional Texas Hold'em poker coach specializing in GTO strategy and exploitative play for live cash games.
-Answer questions about hand analysis, strategy, ranges, bet sizing, and game theory.
-Be concise, direct, and practical. Under 200 words per response.`
+    : `You are a high-stakes cash game poker coach. Be direct, critical, practical. No theory dumps. Under 150 words. Give exact actions, not "it depends".`
 
   try {
     const geminiRes = await fetch(
@@ -65,7 +72,7 @@ Be concise, direct, and practical. Under 200 words per response.`
           system_instruction: { parts: [{ text: systemText }] },
           contents,
           generationConfig: {
-            maxOutputTokens: 4096,
+            maxOutputTokens: 1024,
             temperature: isHandAnalysis ? 0.3 : 0.7,
           },
         }),
@@ -83,7 +90,7 @@ Be concise, direct, and practical. Under 200 words per response.`
       try {
         const cleaned = raw.replace(/```json|```/g, '').trim()
         const parsed = JSON.parse(cleaned)
-        const allowed = ['summary','biggestMistake','mistakeType','preflop','flop','turn','river','betterLine','confidence']
+        const allowed = ['summary','biggestMistake','mistakeType','whyWrong','realityCheck','leakDetected','preflop','flop','turn','river','betterLine','confidence']
         const out = {}
         for (const k of allowed) out[k] = typeof parsed[k] === 'string' ? parsed[k] : ''
         if (!['high','medium','low'].includes(out.confidence)) out.confidence = 'medium'

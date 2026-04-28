@@ -71,29 +71,53 @@ function AnalysisCard({ analysis }) {
         </div>
 
         {/* Biggest Mistake */}
-        <div style={{ padding:'12px 14px', borderRadius:'10px', background:isCorrect?C.primaryDim:C.redDim, border:`1px solid ${isCorrect?C.primaryBorder:C.redBorder}`, position:'relative', overflow:'hidden' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'6px' }}>
+        <div style={{ padding:'12px 14px', borderRadius:'10px', background:isCorrect?C.primaryDim:C.redDim, border:`1px solid ${isCorrect?C.primaryBorder:C.redBorder}` }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'6px', flexWrap:'wrap' }}>
             {isCorrect
               ? <CheckCircle size={14} color={C.primary} />
               : <AlertCircle size={14} color={C.red} />
             }
             <span style={{ fontSize:'0.6rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:isCorrect?C.primary:C.red }}>
-              {isCorrect ? 'Correct Play' : MISTAKE_LABELS[analysis.mistakeType] || 'Biggest Mistake'}
+              ❌ {isCorrect ? 'Correct Play' : MISTAKE_LABELS[analysis.mistakeType] || 'Biggest Mistake'}
             </span>
             <span style={{ marginLeft:'auto', fontSize:'0.58rem', fontWeight:600, color:confColor, background:`rgba(${conf==='high'?'84,233,138':conf==='medium'?'250,210,97':'244,112,103'},0.1)`, padding:'2px 7px', borderRadius:'10px' }}>
               {conf} confidence
             </span>
           </div>
-          <div style={{ fontSize:'0.875rem', color:C.text, lineHeight:1.6, fontWeight:500 }}>
+          <div style={{ fontSize:'0.875rem', color:C.text, lineHeight:1.6, fontWeight:600, marginBottom: analysis.whyWrong ? '8px' : 0 }}>
             {analysis.biggestMistake}
           </div>
+          {analysis.whyWrong && (
+            <div style={{ fontSize:'0.8rem', color:C.textMuted, lineHeight:1.6, borderTop:`1px solid rgba(255,255,255,0.06)`, paddingTop:'8px' }}>
+              🧠 {analysis.whyWrong}
+            </div>
+          )}
         </div>
+
+        {/* Reality Check */}
+        {analysis.realityCheck && (
+          <div style={{ padding:'10px 14px', borderRadius:'10px', background:'rgba(146,204,255,0.06)', border:`1px solid rgba(146,204,255,0.15)` }}>
+            <div style={{ fontSize:'0.58rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.secondary, marginBottom:'4px' }}>📊 Reality Check</div>
+            <div style={{ fontSize:'0.82rem', color:C.text, lineHeight:1.6 }}>{analysis.realityCheck}</div>
+          </div>
+        )}
 
         {/* Better Line */}
         {analysis.betterLine && analysis.betterLine !== 'Continue as played' && (
           <div style={{ padding:'10px 14px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}` }}>
-            <div style={{ fontSize:'0.58rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.primary, marginBottom:'4px' }}>Better Line</div>
-            <div style={{ fontSize:'0.85rem', color:C.text, lineHeight:1.6 }}>{analysis.betterLine}</div>
+            <div style={{ fontSize:'0.58rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.primary, marginBottom:'4px' }}>💡 Better Line</div>
+            <div style={{ fontSize:'0.875rem', color:C.text, lineHeight:1.6, fontWeight:600 }}>{analysis.betterLine}</div>
+          </div>
+        )}
+
+        {/* Leak Detected */}
+        {analysis.leakDetected && (
+          <div style={{ padding:'8px 14px', borderRadius:'8px', background:'rgba(255,192,172,0.06)', border:`1px solid rgba(255,192,172,0.2)`, display:'flex', alignItems:'center', gap:'8px' }}>
+            <span style={{ fontSize:'0.7rem' }}>🔥</span>
+            <div>
+              <span style={{ fontSize:'0.58rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.tertiary||'#ffc0ac' }}>Leak Detected: </span>
+              <span style={{ fontSize:'0.8rem', color:C.text, fontWeight:600 }}>{analysis.leakDetected}</span>
+            </div>
           </div>
         )}
 

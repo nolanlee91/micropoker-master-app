@@ -174,6 +174,7 @@ function Bubble({ msg }) {
 export default function AICoach({ preloadedHand, onHandConsumed }) {
   const [messages,   setMessages]  = useLocalStorage('aicoach-messages', [])
   const [input,      setInput]     = useState('')
+  const [gameType,   setGameType]  = useState('Live Cash')
   const [loading,    setLoading]   = useState(false)
   const [loadedHand, setLoadedHand]= useState(null)
   const [error,      setError]     = useState('')
@@ -187,7 +188,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     if (preloadedHand) {
       setLoadedHand(preloadedHand)
       onHandConsumed?.()
-      const prompt = `Analyze this hand: Position=${preloadedHand.position}, Street=${preloadedHand.street}, Hole cards=${preloadedHand.holeCards.join(' ')}, Board=${preloadedHand.boardCards?.join(' ')||'none'}, Result=${preloadedHand.result}BB.${preloadedHand.notes?' Notes: '+preloadedHand.notes:''}`
+      const prompt = `Game type: ${gameType}. Analyze this hand: Position=${preloadedHand.position}, Street=${preloadedHand.street}, Hole cards=${preloadedHand.holeCards.join(' ')}, Board=${preloadedHand.boardCards?.join(' ')||'none'}, Result=${preloadedHand.result}BB.${preloadedHand.notes?' Notes: '+preloadedHand.notes:''}`
       sendMessage(prompt, true)
     }
   }, [preloadedHand])
@@ -209,6 +210,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
         headers: { 'Content-Type':'application/json' },
         body: JSON.stringify({
           isHandAnalysis,
+          gameType,
           messages: newMessages.slice(-12).map(m => ({ role:m.role, content:m.content })),
         }),
       })
@@ -305,28 +307,42 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
       )}
 
       {/* Input */}
-      <div style={{ padding:'12px 16px', background:C.surface, borderTop:`1px solid ${C.border}`, display:'flex', gap:'8px', alignItems:'flex-end', flexShrink:0 }}>
-        <textarea
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={handleKey}
-          placeholder="Describe your hand... (Enter to send)"
-          rows={2}
-          style={{ flex:1, padding:'10px 12px', background:C.surfaceHigh, border:`1px solid ${C.border}`, borderRadius:'10px', color:C.text, fontSize:'0.875rem', resize:'none', outline:'none', fontFamily:"'Inter',sans-serif", lineHeight:1.6, colorScheme:'dark' }}
-        />
-        <button
-          onClick={() => sendMessage()}
-          disabled={!input.trim() || loading}
-          style={{
-            width:'44px', height:'44px', borderRadius:'10px', border:'none', flexShrink:0,
-            background: input.trim() && !loading ? 'linear-gradient(135deg,#67f09a,#54e98a,#2db866)' : C.surfaceHigh,
-            color: input.trim() && !loading ? '#061a0e' : C.textMuted,
-            cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
-            display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s',
-          }}
-        >
-          <Send size={16} />
-        </button>
+      <div style={{ padding:'12px 16px', background:C.surface, borderTop:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:'8px', flexShrink:0 }}>
+        {/* Game Type selector */}
+        <div style={{ display:'flex', gap:'6px' }}>
+          {['Live Cash', 'Online Cash', 'MTT'].map(type => (
+            <button key={type} onClick={() => setGameType(type)} style={{
+              flex:1, padding:'6px 8px', borderRadius:'8px', border:`1px solid ${gameType===type ? C.primary : C.border}`,
+              background: gameType===type ? C.primaryDim : 'transparent',
+              color: gameType===type ? C.primary : C.textMuted,
+              fontSize:'0.65rem', fontWeight:600, cursor:'pointer', transition:'all 0.15s',
+              letterSpacing:'0.03em',
+            }}>{type}</button>
+          ))}
+        </div>
+        <div style={{ display:'flex', gap:'8px', alignItems:'flex-end' }}>
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Describe your hand... (Enter to send)"
+            rows={2}
+            style={{ flex:1, padding:'10px 12px', background:C.surfaceHigh, border:`1px solid ${C.border}`, borderRadius:'10px', color:C.text, fontSize:'0.875rem', resize:'none', outline:'none', fontFamily:"'Inter',sans-serif", lineHeight:1.6, colorScheme:'dark' }}
+          />
+          <button
+            onClick={() => sendMessage()}
+            disabled={!input.trim() || loading}
+            style={{
+              width:'44px', height:'44px', borderRadius:'10px', border:'none', flexShrink:0,
+              background: input.trim() && !loading ? 'linear-gradient(135deg,#67f09a,#54e98a,#2db866)' : C.surfaceHigh,
+              color: input.trim() && !loading ? '#061a0e' : C.textMuted,
+              cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
+              display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s',
+            }}
+          >
+            <Send size={16} />
+          </button>
+        </div>
       </div>
 
       <style>{`@keyframes pulse { 0%,80%,100%{transform:scale(0.5);opacity:0.3} 40%{transform:scale(1);opacity:1} }`}</style>

@@ -22,42 +22,44 @@ export default async function handler(req, res) {
   }))
 
   const gameContext = gameType || 'Live Cash'
+  const playerType = req.body.playerType || 'Unknown'
   const systemText = isHandAnalysis
-    ? `You are a high-stakes poker coach.
-Game type: ${gameContext}
+    ? `You are a sharp poker coach.
+Analyze the hand and return ONLY this format:
 
-Adjust your analysis:
-- Live Cash: Players are tighter, underbluff, and 4-bet ranges are very strong.
-- Online Cash: Players are more aggressive, wider ranges, more bluffs.
-- MTT: Consider stack sizes, tournament life, and ICM pressure.
+Biggest mistake: [One sentence. Be direct but not reckless.]
+Better line: [One clear recommended line. Include exception if player type matters.]
+Leak detected: [One short leak label + explanation.]
 
 Rules:
-1. Always identify the biggest mistake first.
-2. Be direct and critical. No softening.
-3. Avoid generic explanations.
-4. If facing a large 4-bet or all-in with low SPR: force a decision — jam or fold. DO NOT suggest calling.
-5. Do NOT say "it depends" unless absolutely necessary.
-6. Prefer exploitative reasoning over pure GTO.
+- Do not write long paragraphs.
+- Do not add intro or conclusion.
+- Do not say "never" or "always" unless mathematically forced.
+- In low-SPR 4-bet pots, recommend jam or fold, not call.
+- For live cash, assume 4-bets are value-heavy unless read says otherwise.
+- QQ vs AK is close equity, not a crush.
+- QQ vs AA/KK is bad shape.
 
-Respond ONLY with valid JSON — no markdown, no backticks, no extra text.
+Game type: ${gameContext}
+Player type/read: ${playerType}
 
-JSON format:
+Then respond with valid JSON only — no markdown, no backticks:
 {
   "summary": "One blunt sentence verdict",
-  "biggestMistake": "One sentence, direct. No softening. If no mistake: 'Played correctly.'",
-  "mistakeType": "One of: overcall | overbet | underbet | bad_bluff | wrong_fold | bad_sizing | missed_value | correct",
-  "whyWrong": "Short practical explanation, 1-2 lines max",
-  "realityCheck": "What hands you beat vs what beats you in this spot",
-  "leakDetected": "Name the leak: overfolding | overcalling | bad sizing | spewy bluff | nitty | etc.",
-  "preflop": "One line preflop verdict",
-  "flop": "One line flop verdict or Not applicable",
-  "turn": "One line turn verdict or Not applicable",
-  "river": "One line river verdict or Not applicable",
-  "betterLine": "Exact action: jam / call / fold / raise to X. No fluff.",
+  "biggestMistake": "One direct sentence",
+  "mistakeType": "overcall | overbet | underbet | bad_bluff | wrong_fold | bad_sizing | missed_value | correct",
+  "whyWrong": "1-2 lines max",
+  "realityCheck": "What you beat vs what beats you",
+  "leakDetected": "Leak label + short explanation",
+  "preflop": "One line or Not applicable",
+  "flop": "One line or Not applicable",
+  "turn": "One line or Not applicable",
+  "river": "One line or Not applicable",
+  "betterLine": "Exact action: jam / fold / call / raise to X",
   "confidence": "high | medium | low"
 }`
-    : `You are a high-stakes poker coach. Game type: ${gameContext}.
-Be direct, critical, practical. No theory dumps. Under 150 words. Exact actions only.`
+    : `You are a sharp poker coach. Game type: ${gameContext}.
+Direct, practical, no fluff. Under 150 words. Exact actions only.`
 
   try {
     const geminiRes = await fetch(

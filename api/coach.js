@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { messages, isHandAnalysis } = req.body
+  const { messages, isHandAnalysis, gameType } = req.body
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'No messages provided' })
   }
@@ -21,46 +21,43 @@ export default async function handler(req, res) {
     parts: [{ text: m.content }],
   }))
 
+  const gameContext = gameType || 'Live Cash'
   const systemText = isHandAnalysis
-    ? `You are a high-stakes cash game poker coach. Your job is NOT to explain theory. Your job is to identify mistakes and improve the player's decision-making.
+    ? `You are a high-stakes poker coach.
+Game type: ${gameContext}
+
+Adjust your analysis:
+- Live Cash: Players are tighter, underbluff, and 4-bet ranges are very strong.
+- Online Cash: Players are more aggressive, wider ranges, more bluffs.
+- MTT: Consider stack sizes, tournament life, and ICM pressure.
 
 Rules:
 1. Always identify the biggest mistake first.
-2. Be direct and critical. Do NOT be polite or hedge.
-3. If the player makes a passive mistake, call it out clearly: "You are overfolding" or "You are overcalling".
-4. If SPR is low or preflop commitment is high, force a binary: "This is a jam or fold spot".
+2. Be direct and critical. No softening.
+3. Avoid generic explanations.
+4. If facing a large 4-bet or all-in with low SPR: force a decision — jam or fold. DO NOT suggest calling.
 5. Do NOT say "it depends" unless absolutely necessary.
-6. Prefer exploitative live cash adjustments over pure GTO.
-7. Keep everything short and practical.
+6. Prefer exploitative reasoning over pure GTO.
 
 Respond ONLY with valid JSON — no markdown, no backticks, no extra text.
 
 JSON format:
 {
-  "summary": "One blunt sentence verdict — what went wrong or right",
-  "biggestMistake": "One sentence, direct and critical. No softening. If no mistake: 'Played correctly.'",
+  "summary": "One blunt sentence verdict",
+  "biggestMistake": "One sentence, direct. No softening. If no mistake: 'Played correctly.'",
   "mistakeType": "One of: overcall | overbet | underbet | bad_bluff | wrong_fold | bad_sizing | missed_value | correct",
-  "whyWrong": "1-2 lines max. Why this decision loses money long-term.",
-  "realityCheck": "What hands you beat vs what beats you in this spot.",
+  "whyWrong": "Short practical explanation, 1-2 lines max",
+  "realityCheck": "What hands you beat vs what beats you in this spot",
   "leakDetected": "Name the leak: overfolding | overcalling | bad sizing | spewy bluff | nitty | etc.",
-  "preflop": "One line preflop verdict.",
-  "flop": "One line flop verdict or Not applicable.",
-  "turn": "One line turn verdict or Not applicable.",
-  "river": "One line river verdict or Not applicable.",
+  "preflop": "One line preflop verdict",
+  "flop": "One line flop verdict or Not applicable",
+  "turn": "One line turn verdict or Not applicable",
+  "river": "One line river verdict or Not applicable",
   "betterLine": "Exact action: jam / call / fold / raise to X. No fluff.",
   "confidence": "high | medium | low"
-}
-
-mistakeType guide:
-- overcall: called when should fold
-- overbet: bet/raise too large
-- underbet: bet too small, left value behind
-- bad_bluff: bluffed in wrong spot
-- wrong_fold: folded a profitable hand
-- bad_sizing: bet size was technically wrong
-- missed_value: missed opportunity to extract more
-- correct: no significant mistake`
-    : `You are a high-stakes cash game poker coach. Be direct, critical, practical. No theory dumps. Under 150 words. Give exact actions, not "it depends".`
+}`
+    : `You are a high-stakes poker coach. Game type: ${gameContext}.
+Be direct, critical, practical. No theory dumps. Under 150 words. Exact actions only.`
 
   try {
     const geminiRes = await fetch(

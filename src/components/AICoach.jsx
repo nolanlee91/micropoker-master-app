@@ -175,6 +175,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   const [messages,   setMessages]  = useLocalStorage('aicoach-messages', [])
   const [input,      setInput]     = useState('')
   const [gameType,   setGameType]  = useState('Live Cash')
+  const [playerType, setPlayerType]= useState('Unknown')
   const [loading,    setLoading]   = useState(false)
   const [loadedHand, setLoadedHand]= useState(null)
   const [error,      setError]     = useState('')
@@ -211,6 +212,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
         body: JSON.stringify({
           isHandAnalysis,
           gameType,
+          playerType,
           messages: newMessages.slice(-12).map(m => ({ role:m.role, content:m.content })),
         }),
       })
@@ -316,7 +318,17 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
               background: gameType===type ? C.primaryDim : 'transparent',
               color: gameType===type ? C.primary : C.textMuted,
               fontSize:'0.65rem', fontWeight:600, cursor:'pointer', transition:'all 0.15s',
-              letterSpacing:'0.03em',
+            }}>{type}</button>
+          ))}
+        </div>
+        {/* Player Type selector */}
+        <div style={{ display:'flex', gap:'6px' }}>
+          {['Unknown', 'Nit', 'TAG', 'LAG', 'Fish', 'Rec'].map(type => (
+            <button key={type} onClick={() => setPlayerType(type)} style={{
+              flex:1, padding:'5px 4px', borderRadius:'8px', border:`1px solid ${playerType===type ? C.secondary : C.border}`,
+              background: playerType===type ? 'rgba(146,204,255,0.1)' : 'transparent',
+              color: playerType===type ? C.secondary : C.textMuted,
+              fontSize:'0.6rem', fontWeight:600, cursor:'pointer', transition:'all 0.15s',
             }}>{type}</button>
           ))}
         </div>

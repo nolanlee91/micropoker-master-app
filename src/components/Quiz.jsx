@@ -742,51 +742,41 @@ function consumeAdvCache() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// QUIZ SESSION
+// MIXED QUIZ SESSION — 2 easy + 3 medium + 5 hard = 10 questions
 // ─────────────────────────────────────────────────────────────────────────────
-// Timer per tier
-const TIMER_BY_TIER = { beginner: 20, intermediate: 60, advanced: 60 }
+const MIXED_QUEUE = [
+  'beginner','beginner',
+  'intermediate','intermediate','intermediate',
+  'advanced','advanced','advanced','advanced','advanced',
+]
+const TOTAL_Q = MIXED_QUEUE.length
+const TIMER_BY_TIER = { beginner:20, intermediate:60, advanced:60 }
+const TIER_LABELS   = { beginner:'Easy', intermediate:'Medium', advanced:'Hard' }
+const TIER_COLORS   = { beginner:C.primary, intermediate:'#92ccff', advanced:'#b06aff' }
 
-function QuizSession({ tier, remaining, onBack, onComplete, consume }) {
-  // ── Freeze limit at session start — never changes reactively ────────────────
-  const frozenLimit = useRef(remaining)
-  const limit = frozenLimit.current
+function buildQueue() {
+  const q = []
+  for (const tier of MIXED_QUEUE) {
+    let attempt = 0
+    let question = null
+    while (!question && attempt < 5) { question = TIER_GEN[tier](); attempt++ }
+    if (question) q.push({ ...question, tier })
+  }
+  return q
+}
 
-  const TIMER_SEC = TIMER_BY_TIER[tier] || 20
-  const [qIdx,     setQIdx]     = useState(0)
-  const [q,        setQ]        = useState(null)
-  const [loading,  setLoading]  = useState(true)
-  const [selected, setSelected] = useState(null)
-  const [score,    setScore]    = useState(0)
-  const [streak,   setStreak]   = useState(0)
-  const [done,     setDone]     = useState(false)
-  const [timerOn,  setTimerOn]  = useState(false)
+function QuizSession({ onBack, consume }) {
+  const [queue]    = useState(() => buildQueue())
+  const [qIdx,     setQIdx]    = useState(0)
+  const [selected, setSelected]= useState(null)
+  const [score,    setScore]   = useState(0)
+  const [streak,   setStreak]  = useState(0)
+  const [done,     setDone]    = useState(false)
+  const [timerOn,  setTimerOn] = useState(true)
 
-  const loadQ = useCallback(() => {
-    setSelected(null)
-    setTimerOn(false)
-    setLoading(true)
-    setQ(null)
-
-    // Generate synchronously — all generators are fast (<5ms)
-    // Use requestAnimationFrame so React flushes loading=true first, then shows question
-    requestAnimationFrame(() => {
-      const gen = TIER_GEN[tier]
-      const newQ = gen()
-      if (newQ) {
-        setQ(newQ)
-        setLoading(false)
-        setTimerOn(true)
-      } else {
-        // Last resort fallback — should never happen with triple-fallback generators
-        setLoading(false)
-      }
-    })
-  }, [tier])
-
-  useEffect(() => {
-    loadQ()
-  }, [])
+  const q       = queue[qIdx]
+  const tier    = q?.tier || 'beginner'
+  const TIMER_SEC = TIMER_BY_TIER[tier]
 
   const handleTimeout = useCallback(() => {
     if (selected !== null) return
@@ -794,9 +784,9 @@ function QuizSession({ tier, remaining, onBack, onComplete, consume }) {
     setTimerOn(false)
     consume(tier, false, score)
     setStreak(0)
-  }, [selected, score])
+  }, [selected, score, tier])
 
-  const timeLeft = useCountdown(TIMER_SEC, timerOn, handleTimeout)
+  const timeLeft = useCountdown(TIMER_SEC, timerOn && !done && selected === null, handleTimeout)
 
   const handleAnswer = val => {
     if (selected !== null || !q) return
@@ -811,56 +801,44 @@ function QuizSession({ tier, remaining, onBack, onComplete, consume }) {
   }
 
   const handleNext = () => {
-    if (qIdx + 1 >= limit) {
-      setDone(true)
-      onComplete(score + (selected === q?.answer ? 1 : 0))
-      return
-    }
+    if (qIdx + 1 >= TOTAL_Q) { setDone(true); return }
     setQIdx(i => i + 1)
-    loadQ()
+    setSelected(null)
+    setTimerOn(true)
   }
 
-  // ── Loading spinner ────────────────────────────────────────────────────────
-  if (loading && !done) return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'14px', padding:'40px 20px' }}>
-      <div style={{
-        width:'32px', height:'32px', borderRadius:'50%',
-        border:`3px solid ${C.border}`, borderTopColor:C.primary,
-        animation:'spin 0.8s linear infinite',
-      }}/>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      <div style={{ fontSize:'0.78rem', color:C.textMuted }}>Generating question...</div>
-      <button onClick={onBack} style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:'8px', color:C.textMuted, padding:'8px 16px', cursor:'pointer', fontSize:'0.78rem' }}>
-        ← Back
-      </button>
-    </div>
-  )
-
-  // ── Done screen ────────────────────────────────────────────────────────────
-  if (done) {
-    const finalScore = score
-    const pct = limit > 0 ? Math.round((finalScore/limit)*100) : 0
+  // ── Done screen ─────────────────────────────────────────────────────────────
+  if (done || qIdx >= queue.length) {
+    const pct = Math.round((score / TOTAL_Q) * 100)
     return (
       <div style={{ display:'flex', flexDirection:'column', gap:'14px', alignItems:'center', textAlign:'center', padding:'16px 0' }}>
         <Trophy size={36} color={C.primary}/>
-        <div style={{ fontSize:'2rem', fontWeight:700, color:C.primary, letterSpacing:'-0.02em' }}>{finalScore}/{limit}</div>
+        <div style={{ fontSize:'2rem', fontWeight:700, color:C.primary, letterSpacing:'-0.02em' }}>{score}/{TOTAL_Q}</div>
         <div style={{ fontSize:'0.82rem', color:C.textMuted }}>
-          {pct >= 80 ? 'Excellent! Sharp instincts.' : pct >= 60 ? 'Good work. Keep drilling.' : 'Keep going — you\'ll improve!'}
+          {pct >= 80 ? 'Excellent! Sharp instincts.' : pct >= 60 ? 'Good work. Keep drilling.' : "Keep going — you'll improve!"}
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
           <Flame size={14} color={streak >= 3 ? '#ff7c2a' : C.textMuted}/>
           <span style={{ fontSize:'0.78rem', color:streak >= 3 ? '#ff7c2a' : C.textMuted, fontWeight:600 }}>Streak: {streak}</span>
         </div>
-        {/* Free users: no Play Again — show CTA */}
+        {/* Score breakdown */}
+        <div style={{ width:'100%', background:C.surfaceHigh, borderRadius:'10px', padding:'12px 16px', display:'flex', justifyContent:'space-around' }}>
+          {[['Easy','beginner',2],['Medium','intermediate',3],['Hard','advanced',5]].map(([label, t, total]) => {
+            const tScore = queue.slice(0, qIdx+1).filter((_,i) => queue[i]?.tier===t && selected!==null).length
+            return (
+              <div key={t} style={{ textAlign:'center' }}>
+                <div style={{ fontSize:'0.55rem', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:TIER_COLORS[t], marginBottom:'4px' }}>{label}</div>
+                <div style={{ fontSize:'1rem', fontWeight:700, color:C.text }}>{total}q</div>
+              </div>
+            )
+          })}
+        </div>
         <div style={{ width:'100%', display:'flex', flexDirection:'column', gap:'8px' }}>
-          <div style={{ padding:'10px 14px', borderRadius:'8px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}`, fontSize:'0.72rem', color:C.primary, textAlign:'center' }}>
-            You completed today's {limit} {TIERS[tier].label} questions.
-          </div>
-          <button style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'12px', borderRadius:'8px', border:'none', background:'linear-gradient(135deg,#ffd4a0,#ffc0ac,#e8906a)', color:'#2a1000', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', minHeight:'44px' }}>
-            <Lock size={13}/> Upgrade to Pro → Unlimited Questions
+          <button onClick={() => window.location.reload()} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'12px', borderRadius:'8px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', minHeight:'44px', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 14px rgba(84,233,138,0.2)' }}>
+            <RotateCcw size={14}/> Play Again
           </button>
           <button onClick={onBack} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'11px', borderRadius:'8px', border:'none', background:C.surfaceHigh, color:C.textMuted, fontWeight:600, fontSize:'0.82rem', cursor:'pointer', minHeight:'44px' }}>
-            <ArrowLeft size={14}/> ← Dashboard
+            <ArrowLeft size={14}/> Back
           </button>
         </div>
       </div>
@@ -871,59 +849,65 @@ function QuizSession({ tier, remaining, onBack, onComplete, consume }) {
 
   const isTO    = selected === '__timeout__'
   const isRight = !isTO && selected === q.answer
+  const tierColor = TIER_COLORS[tier]
 
   return (
-    <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+    <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
       {/* Header */}
-      <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
-        <button onClick={onBack} style={{background:'none',border:'none',color:C.textMuted,cursor:'pointer',padding:'4px',display:'flex',alignItems:'center'}}><ArrowLeft size={16}/></button>
-        <div style={{flex:1}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'4px'}}>
-            <span style={{fontSize:'0.6rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:C.textMuted}}>{TIERS[tier].label} · {qIdx+1}/{limit}</span>
-            <div style={{display:'flex',alignItems:'center',gap:'5px'}}>
+      <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+        <button onClick={onBack} style={{ background:'none', border:'none', color:C.textMuted, cursor:'pointer', padding:'4px', display:'flex', alignItems:'center' }}><ArrowLeft size={16}/></button>
+        <div style={{ flex:1 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+              <span style={{ fontSize:'0.6rem', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:tierColor, padding:'2px 7px', borderRadius:'10px', background:`rgba(${tier==='beginner'?'84,233,138':tier==='intermediate'?'146,204,255':'176,106,255'},0.12)` }}>
+                {TIER_LABELS[tier]}
+              </span>
+              <span style={{ fontSize:'0.6rem', color:C.textMuted }}>{qIdx+1}/{TOTAL_Q}</span>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:'5px' }}>
               <Clock size={11} color={timeLeft<=5?C.red:C.textMuted}/>
-              <span style={{fontSize:'0.7rem',fontWeight:700,color:timeLeft<=5?C.red:C.textMuted,fontVariantNumeric:'tabular-nums'}}>{timeLeft}s</span>
+              <span style={{ fontSize:'0.7rem', fontWeight:700, color:timeLeft<=5?C.red:C.textMuted, fontVariantNumeric:'tabular-nums' }}>{timeLeft}s</span>
             </div>
           </div>
           {/* Timer bar */}
-          <div style={{height:'3px',background:C.border,borderRadius:'2px',overflow:'hidden',marginBottom:'3px'}}>
-            <div style={{width:`${(timeLeft/TIMER_SEC)*100}%`,height:'100%',background:timeLeft<=5?C.red:C.primary,borderRadius:'2px',transition:'width 1s linear'}}/>
+          <div style={{ height:'3px', background:C.border, borderRadius:'2px', overflow:'hidden', marginBottom:'3px' }}>
+            <div style={{ width:`${(timeLeft/TIMER_SEC)*100}%`, height:'100%', background:timeLeft<=5?C.red:tierColor, borderRadius:'2px', transition:'width 1s linear' }}/>
           </div>
           {/* Progress bar */}
-          <div style={{height:'3px',background:C.border,borderRadius:'2px',overflow:'hidden'}}>
-            <div style={{width:`${(qIdx/limit)*100}%`,height:'100%',background:C.secondary,borderRadius:'2px',transition:'width 0.3s'}}/>
+          <div style={{ height:'3px', background:C.border, borderRadius:'2px', overflow:'hidden' }}>
+            <div style={{ width:`${(qIdx/TOTAL_Q)*100}%`, height:'100%', background:C.secondary, borderRadius:'2px', transition:'width 0.3s' }}/>
           </div>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:'3px',flexShrink:0}}>
+        <div style={{ display:'flex', alignItems:'center', gap:'3px', flexShrink:0 }}>
           <Flame size={13} color={streak>=3?'#ff7c2a':C.textMuted}/>
-          <span style={{fontSize:'0.75rem',fontWeight:700,color:streak>=3?'#ff7c2a':C.textMuted}}>{streak}</span>
+          <span style={{ fontSize:'0.75rem', fontWeight:700, color:streak>=3?'#ff7c2a':C.textMuted }}>{streak}</span>
         </div>
       </div>
 
       {/* Cards */}
       {(q.heroCards.length>0||q.boardCards.length>0)&&(
-        <div style={{background:C.surfaceHigh,borderRadius:'10px',padding:'12px',display:'flex',flexDirection:'column',gap:'8px'}}>
+        <div style={{ background:C.surfaceHigh, borderRadius:'10px', padding:'12px', display:'flex', flexDirection:'column', gap:'8px' }}>
           {q.heroCards.length>0&&(
             <div>
-              <div style={{fontSize:'0.5rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:C.textMuted,marginBottom:'5px'}}>Your hand</div>
-              <div style={{display:'flex',gap:'6px'}}>{q.heroCards.map(c=><PlayCard key={c} card={c} size='md'/>)}</div>
+              <div style={{ fontSize:'0.5rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'5px' }}>Your hand</div>
+              <div style={{ display:'flex', gap:'6px' }}>{q.heroCards.map(c=><PlayCard key={c} card={c} size='md'/>)}</div>
             </div>
           )}
           {q.boardCards.length>0&&(
             <div>
-              <div style={{fontSize:'0.5rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:C.textMuted,marginBottom:'5px'}}>Board</div>
-              <div style={{display:'flex',gap:'4px',flexWrap:'nowrap'}}>{q.boardCards.map(c=><PlayCard key={c} card={c} size='sm'/>)}</div>
+              <div style={{ fontSize:'0.5rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'5px' }}>Board</div>
+              <div style={{ display:'flex', gap:'4px', flexWrap:'nowrap' }}>{q.boardCards.map(c=><PlayCard key={c} card={c} size='sm'/>)}</div>
             </div>
           )}
-          {q.position&&<div style={{fontSize:'0.68rem',color:C.secondary,fontWeight:600}}>Position: {q.position}</div>}
+          {q.position&&<div style={{ fontSize:'0.68rem', color:C.secondary, fontWeight:600 }}>Position: {q.position}</div>}
         </div>
       )}
 
       {/* Question */}
-      <div style={{fontSize:'0.88rem',fontWeight:500,color:C.text,lineHeight:1.55}}>{q.question}</div>
+      <div style={{ fontSize:'0.88rem', fontWeight:500, color:C.text, lineHeight:1.55 }}>{q.question}</div>
 
       {/* Options */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
         {q.options.map((opt,i)=>{
           const isThis=selected===opt.value
           const correct=opt.value===q.answer
@@ -947,23 +931,21 @@ function QuizSession({ tier, remaining, onBack, onComplete, consume }) {
         })}
       </div>
 
-      {/* Timeout */}
-      {isTO&&<div style={{padding:'10px 12px',borderRadius:'8px',background:'rgba(244,112,103,0.08)',border:`1px solid rgba(244,112,103,0.25)`,fontSize:'0.78rem',color:C.red,fontWeight:600}}>⏱ Time's up! Streak reset.</div>}
+      {isTO&&<div style={{ padding:'10px 12px', borderRadius:'8px', background:'rgba(244,112,103,0.08)', border:`1px solid rgba(244,112,103,0.25)`, fontSize:'0.78rem', color:C.red, fontWeight:600 }}>⏱ Time's up! Streak reset.</div>}
 
-      {/* Explanation + Next (only after answering) */}
       {selected!==null&&(
-        <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
-          <div style={{padding:'11px 12px',borderRadius:'8px',background:isRight?'rgba(84,233,138,0.07)':'rgba(244,112,103,0.07)',border:`1px solid ${isRight?'rgba(84,233,138,0.2)':'rgba(244,112,103,0.2)'}`}}>
-            <div style={{fontSize:'0.75rem',color:C.text,lineHeight:1.6,marginBottom:'6px',fontWeight:500}}>{q.rationale}</div>
-            <div style={{fontFamily:'monospace',fontSize:'0.7rem',color:isRight?C.primary:C.tertiary,background:C.surfaceHigh,padding:'5px 8px',borderRadius:'5px',display:'inline-block'}}>{q.formula}</div>
+        <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+          <div style={{ padding:'11px 12px', borderRadius:'8px', background:isRight?'rgba(84,233,138,0.07)':'rgba(244,112,103,0.07)', border:`1px solid ${isRight?'rgba(84,233,138,0.2)':'rgba(244,112,103,0.2)'}` }}>
+            <div style={{ fontSize:'0.75rem', color:C.text, lineHeight:1.6, marginBottom:'6px', fontWeight:500 }}>{q.rationale}</div>
+            <div style={{ fontFamily:'monospace', fontSize:'0.7rem', color:isRight?C.primary:C.tertiary, background:C.surfaceHigh, padding:'5px 8px', borderRadius:'5px', display:'inline-block' }}>{q.formula}</div>
           </div>
           {q.showRange&&q.position&&(
-            <div style={{background:C.surfaceHigh,borderRadius:'10px',padding:'10px'}}>
+            <div style={{ background:C.surfaceHigh, borderRadius:'10px', padding:'10px' }}>
               <RangeMatrix position={q.position} highlight={q.rangeHighlight}/>
             </div>
           )}
-          <button onClick={handleNext} style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'6px',padding:'12px',borderRadius:'8px',border:'none',background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)',color:'#061a0e',fontWeight:700,fontSize:'0.82rem',cursor:'pointer',minHeight:'44px',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 14px rgba(84,233,138,0.2)'}}>
-            {qIdx+1>=limit?'See Results':'Next Question →'}
+          <button onClick={handleNext} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'12px', borderRadius:'8px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', minHeight:'44px', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 14px rgba(84,233,138,0.2)' }}>
+            {qIdx+1>=TOTAL_Q?'See Results →':'Next Question →'}
           </button>
         </div>
       )}
@@ -1047,33 +1029,25 @@ function DashboardCard({ tierId, remaining, used, limit, best, onStart }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN QUIZ PAGE
-// ─────────────────────────────────────────────────────────────────────────────
 const LEVELS=[{xp:0,l:'Novice'},{xp:50,l:'Regular'},{xp:150,l:'Grinder'},{xp:350,l:'Shark'},{xp:700,l:'Crusher'},{xp:1200,l:'GTO Pro'}]
 function getLevel(xp){let lv=0;for(let i=0;i<LEVELS.length;i++)if(xp>=LEVELS[i].xp)lv=i;return{...LEVELS[lv],next:LEVELS[lv+1]}}
 
 export default function Quiz() {
   const dp = useDailyProgress()
-  const [activeTier, setActiveTier] = useState(null)
-  const [sessionKey, setSessionKey] = useState(0)
+  const [active, setActive] = useState(false)
 
-  // Dev reset
-  useEffect(()=>{
+  useEffect(() => {
     window.resetQuizLimit = () => { dp.resetAll(); window.location.reload() }
-    console.log('%c[QuizDev] window.resetQuizLimit() → resets all daily limits + XP','color:#54e98a;font-weight:bold')
-  },[])
+  }, [])
 
   const lv = getLevel(dp.xp)
-  const progress = lv.next ? ((dp.xp-lv.xp)/(lv.next.xp-lv.xp))*100 : 100
+  const progress = lv.next ? ((dp.xp - lv.xp) / (lv.next.xp - lv.xp)) * 100 : 100
 
-  if (activeTier) {
+  if (active) {
     return (
-      <div style={{padding:'16px',paddingBottom:'120px',maxWidth:'720px',margin:'0 auto',paddingTop:'20px'}}>
+      <div style={{ padding:'16px', paddingBottom:'120px', maxWidth:'720px', margin:'0 auto', paddingTop:'20px' }}>
         <QuizSession
-          key={`${activeTier}-${sessionKey}`}
-          tier={activeTier}
-          remaining={dp.remaining(activeTier)}
-          onBack={()=>setActiveTier(null)}
-          onComplete={()=>setActiveTier(null)}
+          onBack={() => setActive(false)}
           consume={dp.consume}
         />
       </div>
@@ -1081,40 +1055,57 @@ export default function Quiz() {
   }
 
   return (
-    <div style={{padding:'16px',paddingBottom:'120px',maxWidth:'720px',margin:'0 auto',paddingTop:'20px'}}>
-      <div style={{marginBottom:'16px'}}>
-        <h1 style={{fontSize:'1.3rem',fontWeight:700,color:C.text,letterSpacing:'-0.02em',marginBottom:'4px'}}>Quiz</h1>
-        <p style={{fontSize:'0.72rem',color:C.textMuted}}>Daily poker training · 100bb Cash · 9-max</p>
+    <div style={{ padding:'16px', paddingBottom:'120px', maxWidth:'720px', margin:'0 auto', paddingTop:'20px' }}>
+      <div style={{ marginBottom:'16px' }}>
+        <h1 style={{ fontSize:'1.3rem', fontWeight:700, color:C.text, letterSpacing:'-0.02em', marginBottom:'4px' }}>Quiz</h1>
+        <p style={{ fontSize:'0.72rem', color:C.textMuted }}>10 questions · 2 Easy + 3 Medium + 5 Hard</p>
       </div>
 
       {/* XP + Streak */}
-      <div style={{background:C.surfaceHigh,borderRadius:'8px',padding:'10px 14px',marginBottom:'16px',display:'flex',alignItems:'center',gap:'12px'}}>
-        <div style={{flex:1}}>
-          <div style={{display:'flex',justifyContent:'space-between',marginBottom:'4px'}}>
-            <span style={{fontSize:'0.62rem',fontWeight:700,color:C.primary}}>{lv.l}</span>
-            <span style={{fontSize:'0.62rem',color:C.textMuted}}>{dp.xp} XP</span>
+      <div style={{ background:C.surfaceHigh, borderRadius:'8px', padding:'10px 14px', marginBottom:'20px', display:'flex', alignItems:'center', gap:'12px' }}>
+        <div style={{ flex:1 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px' }}>
+            <span style={{ fontSize:'0.62rem', fontWeight:700, color:C.primary }}>{lv.l}</span>
+            <span style={{ fontSize:'0.62rem', color:C.textMuted }}>{dp.xp} XP</span>
           </div>
-          <div style={{height:'5px',background:C.border,borderRadius:'3px',overflow:'hidden'}}>
-            <div style={{width:`${Math.min(100,progress)}%`,height:'100%',background:C.primary,borderRadius:'3px',transition:'width 0.4s'}}/>
+          <div style={{ height:'5px', background:C.border, borderRadius:'3px', overflow:'hidden' }}>
+            <div style={{ width:`${Math.min(100,progress)}%`, height:'100%', background:C.primary, borderRadius:'3px', transition:'width 0.4s' }}/>
           </div>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:'4px',flexShrink:0}}>
+        <div style={{ display:'flex', alignItems:'center', gap:'4px', flexShrink:0 }}>
           <Flame size={14} color={dp.streak>=3?'#ff7c2a':C.textMuted}/>
-          <span style={{fontSize:'0.82rem',fontWeight:700,color:dp.streak>=3?'#ff7c2a':C.textMuted}}>{dp.streak}</span>
+          <span style={{ fontSize:'0.82rem', fontWeight:700, color:dp.streak>=3?'#ff7c2a':C.textMuted }}>{dp.streak}</span>
         </div>
       </div>
 
-      {/* Tier cards */}
-      <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
-        {['beginner','intermediate','advanced'].map(t=>(
-          <DashboardCard
-            key={t} tierId={t}
-            remaining={dp.remaining(t)} used={dp.used(t)}
-            limit={dp.limit(t)} best={dp.best(t)}
-            onStart={()=>{ setSessionKey(k=>k+1); setActiveTier(t) }}
-          />
-        ))}
+      {/* Format breakdown */}
+      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'12px', padding:'16px', marginBottom:'20px' }}>
+        <div style={{ fontSize:'0.6rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'12px' }}>Round Format</div>
+        <div style={{ display:'flex', gap:'8px' }}>
+          {[
+            { label:'Easy', count:2, color:C.primary, topics:'Outs · Equity · Hand Rankings' },
+            { label:'Medium', count:3, color:C.secondary, topics:'Ranges · Pot Odds · Combos' },
+            { label:'Hard', count:5, color:'#b06aff', topics:'Bluffs · Range Advantage' },
+          ].map(({ label, count, color, topics }) => (
+            <div key={label} style={{ flex:1, background:C.surfaceHigh, borderRadius:'8px', padding:'10px 12px', borderTop:`2px solid ${color}` }}>
+              <div style={{ fontSize:'1.1rem', fontWeight:700, color, marginBottom:'2px', fontVariantNumeric:'tabular-nums' }}>{count}q</div>
+              <div style={{ fontSize:'0.6rem', fontWeight:600, color, marginBottom:'4px', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
+              <div style={{ fontSize:'0.58rem', color:C.textMuted, lineHeight:1.4 }}>{topics}</div>
+            </div>
+          ))}
+        </div>
       </div>
+
+      <button onClick={() => setActive(true)} style={{
+        width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px',
+        padding:'14px', borderRadius:'10px', border:'none',
+        background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)',
+        color:'#061a0e', fontWeight:700, fontSize:'0.9rem', cursor:'pointer', minHeight:'52px',
+        boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 20px rgba(84,233,138,0.25)',
+        letterSpacing:'0.03em',
+      }}>
+        Start Quiz →
+      </button>
     </div>
   )
 }

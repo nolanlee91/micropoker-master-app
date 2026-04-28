@@ -72,7 +72,7 @@ mistakeType guide:
           system_instruction: { parts: [{ text: systemText }] },
           contents,
           generationConfig: {
-            maxOutputTokens: 1024,
+            maxOutputTokens: 4096,
             temperature: isHandAnalysis ? 0.3 : 0.7,
           },
         }),

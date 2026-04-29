@@ -228,6 +228,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
             ...loadedHand,
             aiAnalysis:   data.analysis,
             leakCategory: data.analysis.leakDetected || null,
+            evImpact:     loadedHand.result ?? 0,
           }).catch(() => {})
         }
       } else {

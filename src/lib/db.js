@@ -13,6 +13,7 @@ export function rowToHand(row) {
     gameType:     row.game_type    || 'Live Cash',
     aiAnalysis:   row.ai_analysis  || null,
     leakCategory: row.leak_category || null,
+    evImpact:     row.ev_impact != null ? Number(row.ev_impact) : null,
   }
 }
 
@@ -29,6 +30,7 @@ export function handToRow(hand) {
     actions:       hand.street       || 'Preflop',
     ai_analysis:   hand.aiAnalysis   || null,
     leak_category: hand.leakCategory || null,
+    ev_impact:     hand.evImpact     ?? null,
   }
 }
 

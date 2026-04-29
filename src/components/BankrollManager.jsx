@@ -303,6 +303,97 @@ function SessionCard({ session, allHands, onDelete, onLink, onEdit, onEditHand }
   )
 }
 
+// ── Leak Card ────────────────────────────────────────────────────────────────
+function LeakCard({ rank, leak }) {
+  const confColor = leak.confidence === 'High' ? C.primary
+    : leak.confidence === 'Medium' ? '#FAD261' : '#f47067'
+  const confBg = leak.confidence === 'High' ? C.primaryDim
+    : leak.confidence === 'Medium' ? 'rgba(250,210,97,0.1)' : 'rgba(244,112,103,0.1)'
+
+  return (
+    <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'10px', padding:'12px 14px', position:'relative', overflow:'hidden' }}>
+      <div style={{ position:'absolute', left:0, top:0, bottom:0, width:'2px', background:'#f47067', borderRadius:'2px 0 0 2px' }} />
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'12px', marginBottom:'6px' }}>
+        <div style={{ display:'flex', alignItems:'flex-start', gap:'8px', flex:1, minWidth:0 }}>
+          <span style={{ fontSize:'0.62rem', fontWeight:700, color:C.textMuted, flexShrink:0, paddingTop:'2px' }}>#{rank}</span>
+          <span style={{ fontSize:'0.82rem', fontWeight:600, color:C.text, lineHeight:1.4 }}>{leak.category}</span>
+        </div>
+        <span style={{ fontSize:'1rem', fontWeight:700, color:'#f47067', fontVariantNumeric:'tabular-nums', flexShrink:0, whiteSpace:'nowrap' }}>
+          -${Math.abs(Math.round(leak.totalEv))} total
+        </span>
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:'8px', paddingLeft:'22px' }}>
+        <span style={{ fontSize:'0.65rem', color:C.textMuted }}>{leak.count} hands</span>
+        <span style={{ fontSize:'0.58rem', fontWeight:600, padding:'2px 8px', borderRadius:'10px', background:confBg, color:confColor }}>
+          {leak.confidence}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ── Top Leaks ─────────────────────────────────────────────────────────────────
+function TopLeaks({ hands }) {
+  const [open, setOpen] = useState(false)
+
+  if (hands.length < 5) return null
+
+  const validHands = hands.filter(h => h.evImpact != null && h.leakCategory)
+
+  const groups = {}
+  for (const h of validHands) {
+    if (!groups[h.leakCategory]) groups[h.leakCategory] = { totalEv: 0, count: 0 }
+    groups[h.leakCategory].totalEv += h.evImpact
+    groups[h.leakCategory].count++
+  }
+
+  const leaks = Object.entries(groups)
+    .filter(([, g]) => g.totalEv < 0 && g.count >= 2)
+    .sort((a, b) => a[1].totalEv - b[1].totalEv)
+    .slice(0, 3)
+    .map(([cat, g]) => ({
+      category:   cat,
+      totalEv:    g.totalEv,
+      count:      g.count,
+      confidence: g.count > 20 ? 'High' : g.count >= 5 ? 'Medium' : 'Low',
+    }))
+
+  return (
+    <div style={{ marginBottom:'16px' }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', background:'none', border:'none', cursor:'pointer', padding:'0 0 10px' }}
+      >
+        <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+          <span style={{ fontSize:'0.6rem', fontWeight:600, letterSpacing:'0.12em', textTransform:'uppercase', color:C.textMuted }}>
+            Your Biggest Money Leaks
+          </span>
+          {leaks.length > 0 && (
+            <span style={{ fontSize:'0.58rem', fontWeight:700, padding:'2px 7px', borderRadius:'10px', background:'rgba(244,112,103,0.12)', color:'#f47067' }}>
+              {leaks.length}
+            </span>
+          )}
+        </div>
+        {open ? <ChevronUp size={14} color={C.textMuted} /> : <ChevronDown size={14} color={C.textMuted} />}
+      </button>
+
+      {open && (
+        leaks.length === 0 ? (
+          <div style={{ padding:'20px 16px', background:C.surface, border:`1px solid ${C.border}`, borderRadius:'10px', textAlign:'center' }}>
+            <p style={{ fontSize:'0.78rem', color:C.textMuted, margin:0, lineHeight:1.6 }}>
+              Not enough analyzed hands to detect patterns yet.
+            </p>
+          </div>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+            {leaks.map((leak, i) => <LeakCard key={leak.category} rank={i + 1} leak={leak} />)}
+          </div>
+        )
+      )}
+    </div>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function BankrollManager() {
   const navigate = useNavigate()
@@ -363,6 +454,9 @@ export default function BankrollManager() {
 
       {/* Profit chart */}
       <ProfitChart sessions={sessions} />
+
+      {/* Top leaks */}
+      <TopLeaks hands={hands} />
 
       {/* Session history */}
       <div style={{ marginBottom:'12px' }}>

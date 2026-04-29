@@ -303,8 +303,20 @@ function SessionCard({ session, allHands, onDelete, onLink, onEdit, onEditHand }
   )
 }
 
+const LEAK_NAMES = {
+  overcall:     'Calling Too Wide',
+  overbet:      'Betting Too Large',
+  underbet:     'Betting Too Small',
+  bad_bluff:    'Bad Bluff Spots',
+  wrong_fold:   'Folding Too Much',
+  bad_sizing:   'Poor Bet Sizing',
+  missed_value: 'Missing Value Bets',
+  other:        'General Mistakes',
+}
+
 // ── Leak Card ────────────────────────────────────────────────────────────────
 function LeakCard({ rank, leak }) {
+  const displayName = LEAK_NAMES[leak.category] || leak.category
   const confColor = leak.confidence === 'High' ? C.primary
     : leak.confidence === 'Medium' ? '#FAD261' : '#f47067'
   const confBg = leak.confidence === 'High' ? C.primaryDim
@@ -316,7 +328,7 @@ function LeakCard({ rank, leak }) {
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'12px', marginBottom:'6px' }}>
         <div style={{ display:'flex', alignItems:'flex-start', gap:'8px', flex:1, minWidth:0 }}>
           <span style={{ fontSize:'0.62rem', fontWeight:700, color:C.textMuted, flexShrink:0, paddingTop:'2px' }}>#{rank}</span>
-          <span style={{ fontSize:'0.82rem', fontWeight:600, color:C.text, lineHeight:1.4 }}>{leak.category}</span>
+          <span style={{ fontSize:'0.82rem', fontWeight:600, color:C.text, lineHeight:1.4 }}>{displayName}</span>
         </div>
         <span style={{ fontSize:'1rem', fontWeight:700, color:'#f47067', fontVariantNumeric:'tabular-nums', flexShrink:0, whiteSpace:'nowrap' }}>
           -${Math.abs(Math.round(leak.totalEv))} total

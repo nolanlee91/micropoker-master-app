@@ -35,6 +35,36 @@ const MISTAKE_LABELS = {
   other:        'Mistake',
 }
 
+const ANALYSIS_KEYS   = ['summary', 'biggestMistake', 'mistakeType', 'whyWrong', 'betterLine', 'confidence']
+const VALID_TYPES     = ['overcall', 'overbet', 'underbet', 'bad_bluff', 'wrong_fold', 'bad_sizing', 'missed_value', 'correct']
+
+function parseAnalysisText(text) {
+  if (!text || typeof text !== 'string') return null
+  const attempts = [
+    text,
+    text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim(),
+  ]
+  const m = text.match(/\{[\s\S]*\}/)
+  if (m) attempts.push(m[0])
+
+  for (const s of attempts) {
+    try {
+      const p = JSON.parse(s)
+      if (!p || typeof p !== 'object' || Array.isArray(p)) continue
+      // Must have at least summary or biggestMistake to be a valid analysis
+      if (!p.summary && !p.biggestMistake) continue
+      const out = {}
+      for (const k of ANALYSIS_KEYS) out[k] = typeof p[k] === 'string' ? p[k] : ''
+      if (!['high', 'medium', 'low'].includes(out.confidence)) out.confidence = 'medium'
+      if (!VALID_TYPES.includes(out.mistakeType)) out.mistakeType = 'other'
+      return out
+    } catch (e) {
+      console.error('[coach] frontend parse attempt failed:', e.message)
+    }
+  }
+  return null
+}
+
 function MiniCard({ card }) {
   const r = card.slice(0,-1), s = card.slice(-1)
   return (
@@ -122,9 +152,22 @@ function AnalysisCard({ analysis }) {
 // ── Plain chat bubble ─────────────────────────────────────────────────────────
 function Bubble({ msg }) {
   const isUser = msg.role === 'user'
+
   if (msg.type === 'analysis' && msg.analysis) {
     return <AnalysisCard analysis={msg.analysis} />
   }
+
+  let content = msg.content || ''
+
+  // Last-resort: if assistant message looks like JSON, try to render as analysis card
+  if (!isUser && content.trimStart().startsWith('{')) {
+    console.warn('[coach] Bubble received JSON-like content, attempting recovery')
+    const recovered = parseAnalysisText(content)
+    if (recovered) return <AnalysisCard analysis={recovered} />
+    // Could not parse — replace raw JSON with safe fallback text
+    content = 'Analysis complete. Please try again for structured output.'
+  }
+
   return (
     <div style={{ display:'flex', flexDirection:isUser?'row-reverse':'row', gap:'8px', alignItems:'flex-start', marginBottom:'12px' }}>
       {!isUser && (
@@ -139,7 +182,7 @@ function Bubble({ msg }) {
         border: `1px solid ${isUser ? 'transparent' : 'rgba(146,204,255,0.08)'}`,
         fontSize:'0.875rem', lineHeight:1.75, color:C.text, whiteSpace:'pre-wrap', wordBreak:'break-word',
       }}>
-        {msg.content}
+        {content}
       </div>
     </div>
   )
@@ -200,12 +243,38 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           updateHand(loadedHand.id, {
             ...loadedHand,
             aiAnalysis:   data.analysis,
-            leakCategory: data.analysis.mistakeType   || null,
+            leakCategory: data.analysis.mistakeType || null,
             evImpact:     loadedHand.result ?? 0,
           }).catch(() => {})
         }
       } else {
-        setMessages(prev => [...prev, { role:'assistant', type:'reply', content: data.reply || 'No response.' }])
+        const replyText = data.reply || 'No response.'
+
+        // Frontend safety net: backend fell back to reply but text may still contain JSON
+        if (isHandAnalysis) {
+          const recovered = parseAnalysisText(replyText)
+          if (recovered) {
+            console.log('[coach] Frontend recovered structured analysis from reply fallback')
+            setMessages(prev => [...prev, { role:'assistant', type:'analysis', content:'', analysis:recovered }])
+            if (loadedHand?.id) {
+              updateHand(loadedHand.id, {
+                ...loadedHand,
+                aiAnalysis:   recovered,
+                leakCategory: recovered.mistakeType || null,
+                evImpact:     loadedHand.result ?? 0,
+              }).catch(() => {})
+            }
+            return
+          }
+          // If reply looks like raw JSON but couldn't be parsed, show safe message
+          if (replyText.trimStart().startsWith('{')) {
+            console.error('[coach] Reply looks like JSON but failed to parse:', replyText.slice(0, 200))
+            setMessages(prev => [...prev, { role:'assistant', type:'reply', content:'Analysis received but could not be displayed. Please try again.' }])
+            return
+          }
+        }
+
+        setMessages(prev => [...prev, { role:'assistant', type:'reply', content: replyText }])
       }
     } catch (err) {
       setError(err.message)

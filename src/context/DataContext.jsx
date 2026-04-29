@@ -12,7 +12,7 @@ export function DataProvider({ children }) {
   const [loading,  setLoading]  = useState(true)
 
   const fetchAll = useCallback(async () => {
-    if (!session) { setLoading(false); return }
+    if (!session) { setHands([]); setSessions([]); setLoading(false); return }
     setLoading(true)
     const [handsRes, sessionsRes] = await Promise.all([
       supabase.from('hand_history').select('*').order('created_at', { ascending: false }),

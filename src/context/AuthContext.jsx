@@ -116,6 +116,7 @@ export function AuthProvider({ children }) {
   }
 
   async function signOut() {
+    localStorage.removeItem('aicoach-messages')
     await supabase.auth.signOut()
   }
 

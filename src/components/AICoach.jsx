@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { BrainCircuit, Send, RefreshCw, AlertCircle, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
+import { useData } from '../context/DataContext'
 
 const C = {
   bg:          '#0B0E14',
@@ -172,6 +173,7 @@ function Bubble({ msg }) {
 }
 
 export default function AICoach({ preloadedHand, onHandConsumed }) {
+  const { updateHand } = useData()
   const [messages,   setMessages]  = useLocalStorage('aicoach-messages', [])
   const [input,      setInput]     = useState('')
   const [gameType,   setGameType]  = useState('Live Cash')
@@ -221,6 +223,13 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
 
       if (data.type === 'analysis' && data.analysis) {
         setMessages(prev => [...prev, { role:'assistant', type:'analysis', content:'', analysis:data.analysis }])
+        if (isHandAnalysis && loadedHand?.id) {
+          updateHand(loadedHand.id, {
+            ...loadedHand,
+            aiAnalysis:   data.analysis,
+            leakCategory: data.analysis.leakDetected || null,
+          }).catch(() => {})
+        }
       } else {
         setMessages(prev => [...prev, { role:'assistant', type:'reply', content: data.reply || 'No response.' }])
       }

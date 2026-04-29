@@ -9,29 +9,39 @@ import Quiz from './components/Quiz'
 import LoginScreen from './components/LoginScreen'
 import MigratePrompt from './components/MigratePrompt'
 import { useAuth } from './context/AuthContext'
+import { DataProvider, useData } from './context/DataContext'
 
 export default function App() {
   const { session, showMigrate } = useAuth()
-  const [analyzingHand, setAnalyzingHand] = useState(null)
 
   if (session === undefined) return <Spinner />
-
   if (!session) return <LoginScreen />
 
   return (
-    <>
+    <DataProvider>
       {showMigrate && <MigratePrompt />}
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Navigate to="/history" replace />} />
-          <Route path="/history"  element={<HandHistory onAnalyze={hand => setAnalyzingHand(hand)} />} />
-          <Route path="/bankroll" element={<BankrollManager />} />
-          <Route path="/odds"     element={<OddsCalculator />} />
-          <Route path="/quiz"     element={<Quiz />} />
-          <Route path="/coach"    element={<AICoach preloadedHand={analyzingHand} onHandConsumed={() => setAnalyzingHand(null)} />} />
-        </Routes>
-      </Layout>
-    </>
+      <AppRoutes />
+    </DataProvider>
+  )
+}
+
+function AppRoutes() {
+  const { loading } = useData()
+  const [analyzingHand, setAnalyzingHand] = useState(null)
+
+  if (loading) return <Spinner />
+
+  return (
+    <Layout>
+      <Routes>
+        <Route path="/" element={<Navigate to="/history" replace />} />
+        <Route path="/history"  element={<HandHistory onAnalyze={hand => setAnalyzingHand(hand)} />} />
+        <Route path="/bankroll" element={<BankrollManager />} />
+        <Route path="/odds"     element={<OddsCalculator />} />
+        <Route path="/quiz"     element={<Quiz />} />
+        <Route path="/coach"    element={<AICoach preloadedHand={analyzingHand} onHandConsumed={() => setAnalyzingHand(null)} />} />
+      </Routes>
+    </Layout>
   )
 }
 

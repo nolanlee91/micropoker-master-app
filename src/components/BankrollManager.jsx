@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PlusCircle, Wallet, Trash2, Link, ChevronDown, ChevronUp, CheckSquare, Square } from 'lucide-react'
-import { useLocalStorage } from '../hooks/useLocalStorage'
+import { useData } from '../context/DataContext'
 
 const C = {
   bg:'#0B0E14', surface:'#161B22', surfaceHi:'#1E2530', surfaceHigh:'#252D3A',
@@ -141,7 +141,9 @@ function SessionModal({ initial, onSave, onClose }) {
           <button onClick={onClose} style={{ flex:1, padding:'12px', borderRadius:'8px', border:'none', background:C.surfaceHigh, color:C.textMuted, fontWeight:500, fontSize:'0.8rem', cursor:'pointer', minHeight:'44px' }}>Cancel</button>
           <button onClick={() => {
             if (!form.buyIn && !form.cashOut) return
-            onSave({ ...form, profit, buyIn:parseFloat(form.buyIn)||0, cashOut:parseFloat(form.cashOut)||0, hours:parseFloat(form.hours)||0, id:initial?.id||Date.now(), linkedHandIds:initial?.linkedHandIds||[] })
+            const s = { ...form, profit, buyIn:parseFloat(form.buyIn)||0, cashOut:parseFloat(form.cashOut)||0, hours:parseFloat(form.hours)||0, linkedHandIds:initial?.linkedHandIds||[] }
+            if (initial?.id) s.id = initial.id
+            onSave(s)
             onClose()
           }} style={{ flex:2, padding:'12px', borderRadius:'8px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontWeight:700, fontSize:'0.8rem', cursor:'pointer', minHeight:'44px', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 16px rgba(84,233,138,0.2)' }}>
             {isEdit ? 'Save Changes' : 'Save Session'}
@@ -304,15 +306,12 @@ function SessionCard({ session, allHands, onDelete, onLink, onEdit, onEditHand }
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function BankrollManager() {
   const navigate = useNavigate()
-  const [sessions,    setSessions]    = useLocalStorage('brm-sessions', [])
-  const [hands,       setHands]       = useLocalStorage('hand-history', [])
+  const { sessions, hands, addSession, updateSession, deleteSession, linkHandsToSession } = useData()
   const [showModal,   setShowModal]   = useState(false)
   const [editSession, setEditSession] = useState(null)
-  const [pendingEditHand, setPendingEditHand] = useLocalStorage('pending-edit-hand', null)
 
   const handleEditHand = (hand) => {
-    setPendingEditHand(hand)
-    navigate('/history')
+    navigate('/history', { state: { editHand: hand } })
   }
 
   const stats = useMemo(() => {
@@ -324,12 +323,8 @@ export default function BankrollManager() {
     return { totalProfit, totalHours, wins, winRate, hourly }
   }, [sessions])
 
-  const handleLink = (sessionId, handIds) => {
-    setSessions(prev => prev.map(s => s.id===sessionId ? { ...s, linkedHandIds:handIds } : s))
-    setHands(prev => prev.map(h => ({
-      ...h,
-      sessionId: handIds.includes(h.id) ? sessionId : (h.sessionId===sessionId ? null : h.sessionId)
-    })))
+  const handleLink = async (sessionId, handIds) => {
+    await linkHandsToSession(sessionId, handIds)
   }
 
   return (
@@ -378,7 +373,7 @@ export default function BankrollManager() {
           )}
           {[...sessions].reverse().map(s => (
             <SessionCard key={s.id} session={s} allHands={hands}
-              onDelete={id => setSessions(p=>p.filter(s=>s.id!==id))}
+              onDelete={async id => await deleteSession(id)}
               onLink={handleLink}
               onEdit={s => setEditSession(s)}
               onEditHand={handleEditHand}
@@ -389,14 +384,14 @@ export default function BankrollManager() {
 
       {showModal && (
         <SessionModal
-          onSave={s => { setSessions(p=>[...p, s]); setShowModal(false) }}
+          onSave={async s => { await addSession(s); setShowModal(false) }}
           onClose={()=>setShowModal(false)}
         />
       )}
       {editSession && (
         <SessionModal
           initial={editSession}
-          onSave={updated => { setSessions(p=>p.map(s=>s.id===updated.id?updated:s)); setEditSession(null) }}
+          onSave={async updated => { await updateSession(updated.id, updated); setEditSession(null) }}
           onClose={()=>setEditSession(null)}
         />
       )}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Plus, BrainCircuit, Trash2, X, Link2, Pencil } from 'lucide-react'
-import { useLocalStorage } from '../hooks/useLocalStorage'
+import { useData } from '../context/DataContext'
 
 const C = {
   bg:'#0B0E14', surface:'#161B22', surfaceHi:'#1E2530', surfaceHigh:'#252D3A',
@@ -438,43 +438,33 @@ function HandCard({ hand, sessions, onEdit, onDelete, onAnalyze, onLink }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function HandHistory({ onAnalyze }) {
-  const [hands,           setHands]           = useLocalStorage('hand-history', [])
-  const [sessions,        setSessions]         = useLocalStorage('brm-sessions', [])
-  const [pendingEditHand, setPendingEditHand]  = useLocalStorage('pending-edit-hand', null)
-  const [formMode,        setFormMode]         = useState(null)
+  const { hands, sessions, addHand, updateHand, deleteHand, linkHandToSession } = useData()
+  const [formMode, setFormMode] = useState(null)
   const navigate = useNavigate()
+  const location = useLocation()
 
-  // Auto-open edit form if navigated from Bankroll
+  // Auto-open edit form if navigated from Bankroll with state
   useEffect(() => {
-    if (pendingEditHand) {
-      setFormMode(pendingEditHand)
-      setPendingEditHand(null)
-    }
+    if (location.state?.editHand) setFormMode(location.state.editHand)
   }, [])
 
   const openAdd   = ()     => setFormMode('add')
   const openEdit  = (hand) => setFormMode(hand)
   const closeForm = ()     => setFormMode(null)
 
-  const handleSave = (hand) => {
+  const handleSave = async (hand) => {
     if (formMode === 'add') {
-      setHands(p => [hand, ...p])
+      await addHand(hand)
     } else {
-      // edit — replace existing
-      setHands(p => p.map(h => h.id === hand.id ? hand : h))
+      await updateHand(hand.id, hand)
     }
     closeForm()
   }
 
   const handleAnalyze = (hand) => { onAnalyze(hand); navigate('/coach') }
 
-  const handleLink = (handId, sessionId) => {
-    setHands(p => p.map(h => h.id === handId ? { ...h, sessionId } : h))
-    setSessions(p => p.map(s => {
-      const linked = s.linkedHandIds || []
-      if (s.id === sessionId) return { ...s, linkedHandIds: [...new Set([...linked, handId])] }
-      return { ...s, linkedHandIds: linked.filter(id => id !== handId) }
-    }))
+  const handleLink = async (handId, sessionId) => {
+    await linkHandToSession(handId, sessionId)
   }
 
   const totalResult = hands.reduce((s, h) => s + (h.result||0), 0)
@@ -549,7 +539,7 @@ export default function HandHistory({ onAnalyze }) {
               hand={hand}
               sessions={sessions}
               onEdit={openEdit}
-              onDelete={id => setHands(p => p.filter(h=>h.id!==id))}
+              onDelete={async id => await deleteHand(id)}
               onAnalyze={handleAnalyze}
               onLink={handleLink}
             />

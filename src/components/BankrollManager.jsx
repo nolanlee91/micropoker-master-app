@@ -315,12 +315,16 @@ const LEAK_NAMES = {
 }
 
 // ── Leak Card ────────────────────────────────────────────────────────────────
-function LeakCard({ rank, leak }) {
+function LeakCard({ rank, leak, monthlyMult }) {
   const displayName = LEAK_NAMES[leak.category] || leak.category
-  const confColor = leak.confidence === 'High' ? C.primary
+  const confColor   = leak.confidence === 'High' ? C.primary
     : leak.confidence === 'Medium' ? '#FAD261' : '#f47067'
-  const confBg = leak.confidence === 'High' ? C.primaryDim
+  const confBg      = leak.confidence === 'High' ? C.primaryDim
     : leak.confidence === 'Medium' ? 'rgba(250,210,97,0.1)' : 'rgba(244,112,103,0.1)'
+  const amount      = monthlyMult
+    ? Math.abs(Math.round(leak.totalEv * monthlyMult))
+    : Math.abs(Math.round(leak.totalEv))
+  const amountSuffix = monthlyMult ? '/mo' : ' total'
 
   return (
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'10px', padding:'12px 14px', position:'relative', overflow:'hidden' }}>
@@ -330,9 +334,12 @@ function LeakCard({ rank, leak }) {
           <span style={{ fontSize:'0.62rem', fontWeight:700, color:C.textMuted, flexShrink:0, paddingTop:'2px' }}>#{rank}</span>
           <span style={{ fontSize:'0.82rem', fontWeight:600, color:C.text, lineHeight:1.4 }}>{displayName}</span>
         </div>
-        <span style={{ fontSize:'1rem', fontWeight:700, color:'#f47067', fontVariantNumeric:'tabular-nums', flexShrink:0, whiteSpace:'nowrap' }}>
-          -${Math.abs(Math.round(leak.totalEv))} total
-        </span>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', flexShrink:0 }}>
+          <span style={{ fontSize:'1rem', fontWeight:700, color:'#f47067', fontVariantNumeric:'tabular-nums', whiteSpace:'nowrap' }}>
+            -${amount}
+          </span>
+          <span style={{ fontSize:'0.55rem', color:'rgba(244,112,103,0.55)' }}>{amountSuffix}</span>
+        </div>
       </div>
       <div style={{ display:'flex', alignItems:'center', gap:'8px', paddingLeft:'22px' }}>
         <span style={{ fontSize:'0.65rem', color:C.textMuted }}>{leak.count} hands</span>
@@ -352,6 +359,13 @@ function TopLeaks({ hands }) {
 
   const validHands = hands.filter(h => h.evImpact != null && h.leakCategory)
 
+  // Monthly multiplier: needs >= 14 days span of tracked hands
+  const timestamps  = validHands.map(h => new Date(h.date).getTime()).filter(t => !isNaN(t))
+  const daySpan     = timestamps.length >= 2
+    ? (Math.max(...timestamps) - Math.min(...timestamps)) / (1000 * 60 * 60 * 24)
+    : 0
+  const monthlyMult = daySpan >= 14 ? 30 / daySpan : null
+
   const groups = {}
   for (const h of validHands) {
     if (!groups[h.leakCategory]) groups[h.leakCategory] = { totalEv: 0, count: 0 }
@@ -370,8 +384,14 @@ function TopLeaks({ hands }) {
       confidence: g.count > 20 ? 'High' : g.count >= 5 ? 'Medium' : 'Low',
     }))
 
+  const totalLeakRaw = leaks.reduce((s, l) => s + l.totalEv, 0)
+  const totalDisplay = monthlyMult
+    ? Math.abs(Math.round(totalLeakRaw * monthlyMult))
+    : Math.abs(Math.round(totalLeakRaw))
+  const totalSuffix  = monthlyMult ? '/month' : ' total'
+
   return (
-    <div style={{ marginBottom:'16px' }}>
+    <div style={{ marginBottom:'20px' }}>
       <button
         onClick={() => setOpen(v => !v)}
         style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', background:'none', border:'none', cursor:'pointer', padding:'0 0 10px' }}
@@ -398,7 +418,14 @@ function TopLeaks({ hands }) {
           </div>
         ) : (
           <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-            {leaks.map((leak, i) => <LeakCard key={leak.category} rank={i + 1} leak={leak} />)}
+            {leaks.map((leak, i) => (
+              <LeakCard key={leak.category} rank={i + 1} leak={leak} monthlyMult={monthlyMult} />
+            ))}
+            <div style={{ padding:'12px 16px', background:'rgba(244,112,103,0.06)', border:'1px solid rgba(244,112,103,0.18)', borderRadius:'10px', textAlign:'center' }}>
+              <span style={{ fontSize:'0.82rem', fontWeight:700, color:'#f47067' }}>
+                You are leaking ~${totalDisplay}{totalSuffix}
+              </span>
+            </div>
           </div>
         )
       )}
@@ -418,12 +445,14 @@ export default function BankrollManager() {
   }
 
   const stats = useMemo(() => {
-    const totalProfit = sessions.reduce((s,r) => s+(r.profit||0), 0)
-    const totalHours  = sessions.reduce((s,r) => s+(r.hours||0), 0)
-    const wins        = sessions.filter(r => r.profit>0).length
-    const winRate     = sessions.length ? ((wins/sessions.length)*100).toFixed(0) : 0
-    const hourly      = totalHours>0 ? (totalProfit/totalHours).toFixed(1) : 0
-    return { totalProfit, totalHours, wins, winRate, hourly }
+    const totalProfit   = sessions.reduce((s,r) => s+(r.profit||0), 0)
+    const totalHours    = sessions.reduce((s,r) => s+(r.hours||0), 0)
+    const earlyEstimate = sessions.length < 3 || totalHours * 60 < 120
+    const hourlyRaw     = totalHours > 0 ? totalProfit / totalHours : null
+    const hourlyDisplay = hourlyRaw !== null
+      ? `${hourlyRaw < 0 ? '-' : '+'}$${Math.abs(hourlyRaw).toFixed(1)}/h`
+      : '--'
+    return { totalProfit, totalHours, earlyEstimate, hourlyRaw, hourlyDisplay }
   }, [sessions])
 
   const handleLink = async (sessionId, handIds) => {
@@ -449,19 +478,23 @@ export default function BankrollManager() {
         </button>
       </div>
 
-      {/* Stats grid */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'16px' }}>
-        {[
-          { label:'Total Profit',  value:`${stats.totalProfit>=0?'+':''}$${Math.abs(stats.totalProfit).toFixed(0)}`, color:stats.totalProfit>=0?C.primary:C.red },
-          { label:'Win Rate',      value:`${stats.winRate}%`,   color:C.secondary },
-          { label:'Hourly Rate',   value:`$${stats.hourly}/h`,  color:C.text },
-          { label:'Sessions',      value:sessions.length,       color:C.text },
-        ].map(s => (
-          <div key={s.label} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'10px', padding:'12px 14px', position:'relative', overflow:'hidden' }}>
-            <div style={{ fontSize:'0.55rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'8px' }}>{s.label}</div>
-            <div style={{ fontSize:'1.4rem', fontWeight:700, letterSpacing:'-0.025em', color:s.color, fontVariantNumeric:'tabular-nums' }}>{s.value}</div>
+      {/* Stats grid — 2 money KPIs */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'20px' }}>
+        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'12px', padding:'16px 18px' }}>
+          <div style={{ fontSize:'0.55rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'10px' }}>Total Profit</div>
+          <div style={{ fontSize:'1.65rem', fontWeight:700, letterSpacing:'-0.03em', color:stats.totalProfit>=0?C.primary:C.red, fontVariantNumeric:'tabular-nums' }}>
+            {stats.totalProfit>=0?'+':'-'}${Math.abs(stats.totalProfit).toFixed(0)}
           </div>
-        ))}
+        </div>
+        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'12px', padding:'16px 18px' }}>
+          <div style={{ fontSize:'0.55rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'10px' }}>Hourly Rate</div>
+          <div style={{ fontSize:'1.65rem', fontWeight:700, letterSpacing:'-0.03em', color:C.text, fontVariantNumeric:'tabular-nums' }}>
+            {stats.hourlyDisplay}
+          </div>
+          {stats.earlyEstimate && stats.hourlyRaw !== null && (
+            <div style={{ fontSize:'0.6rem', color:'#FAD261', marginTop:'4px' }}>⚠️ Early estimate</div>
+          )}
+        </div>
       </div>
 
       {/* Profit chart */}

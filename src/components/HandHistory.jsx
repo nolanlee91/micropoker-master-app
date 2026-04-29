@@ -497,20 +497,22 @@ export default function HandHistory({ onAnalyze }) {
         )}
       </div>
 
-      {/* Summary grid */}
+      {/* Summary grid — 2 money-focused KPIs */}
       {hands.length > 0 && !formMode && (
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'16px' }}>
-          {[
-            { label:'Total Result', value:`${totalResult>=0?'+':''}$${Math.abs(totalResult).toFixed(0)}`, color:totalResult>=0?C.primary:C.red },
-            { label:'Win Rate',     value:`${winRate}%`,   color:C.secondary },
-            { label:'Hands Played', value:hands.length,    color:C.text },
-            { label:'Winning',      value:wins,            color:C.primary },
-          ].map(s => (
-            <div key={s.label} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'10px', padding:'12px 14px' }}>
-              <div style={{ fontSize:'0.56rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'6px' }}>{s.label}</div>
-              <div style={{ fontSize:'1.35rem', fontWeight:700, letterSpacing:'-0.02em', color:s.color, fontVariantNumeric:'tabular-nums' }}>{s.value}</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'20px' }}>
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'12px', padding:'16px 18px' }}>
+            <div style={{ fontSize:'0.55rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'10px' }}>Total Result</div>
+            <div style={{ fontSize:'1.65rem', fontWeight:700, letterSpacing:'-0.03em', color:totalResult>=0?C.primary:C.red, fontVariantNumeric:'tabular-nums' }}>
+              {totalResult>=0?'+':'-'}${Math.abs(totalResult).toFixed(0)}
             </div>
-          ))}
+          </div>
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'12px', padding:'16px 18px' }}>
+            <div style={{ fontSize:'0.55rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'10px' }}>Win Rate</div>
+            <div style={{ fontSize:'1.65rem', fontWeight:700, letterSpacing:'-0.03em', color:C.secondary, fontVariantNumeric:'tabular-nums' }}>
+              {winRate}%
+            </div>
+            <div style={{ fontSize:'0.6rem', color:C.textMuted, marginTop:'4px' }}>{hands.length} hands</div>
+          </div>
         </div>
       )}
 

@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react'
-import { BrainCircuit, Send, RefreshCw, Key, Zap } from 'lucide-react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { BrainCircuit, Send, RefreshCw, AlertCircle, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 
 const C = {
@@ -8,399 +8,356 @@ const C = {
   surfaceHi:   '#1E2530',
   surfaceHigh: '#252D3A',
   border:      '#21262D',
-  borderHi:    '#30363D',
   primary:     '#54e98a',
   primaryDim:  'rgba(84,233,138,0.1)',
+  primaryBorder:'rgba(84,233,138,0.25)',
   secondary:   '#92ccff',
-  secondaryDim:'rgba(146,204,255,0.1)',
-  tertiary:    '#ffc0ac',
   text:        '#E6EDF3',
   textMuted:   '#7D8590',
   red:         '#f47067',
+  redDim:      'rgba(244,112,103,0.1)',
+  redBorder:   'rgba(244,112,103,0.25)',
 }
 
-const POSITIONS = ['UTG','UTG+1','MP','HJ','CO','BTN','SB','BB']
-const STREETS   = ['Preflop','Flop','Turn','River']
-const PRESETS = [
-  { label: 'UTG Open',    prompt: 'I have A♠K♥ UTG in a 9-handed $1/$2 NL. Stack 100bb. Raise or limp?' },
-  { label: 'Facing 3-bet',prompt: 'Opened KK UTG, 3-bet by BTN to 9bb, blinds fold. 100bb deep. Optimal play?' },
-  { label: 'Bluff spot',  prompt: 'I have 8♠7♠ on BTN vs CO. Flop A♠5♠2♥. Villain cbets 1/3 pot. What do I do?' },
-  { label: 'River bet',   prompt: 'Board: A♥K♦5♣2♠J♦. I have Q♥T♠ (nut straight). Villain bet 2/3 pot. Raise or call?' },
-  { label: 'ICM bubble',  prompt: 'Tournament bubble, 15bb BTN, A♦J♠. Big stack in BB. Shove or fold?' },
-]
-
-// ── Mini card display ─────────────────────────────────────────────────────────
 const SL = { s:'♠', h:'♥', d:'♦', c:'♣' }
 const SC = { s:'#1a1a1a', h:'#cc2222', d:'#cc2222', c:'#1a1a1a' }
+
+const MISTAKE_LABELS = {
+  overcall:     'Overcall',
+  overbet:      'Overbet',
+  underbet:     'Underbet',
+  bad_bluff:    'Bad Bluff',
+  wrong_fold:   'Wrong Fold',
+  bad_sizing:   'Bad Sizing',
+  missed_value: 'Missed Value',
+  correct:      'Correct Play',
+  other:        'Mistake',
+}
 
 function MiniCard({ card }) {
   const r = card.slice(0,-1), s = card.slice(-1)
   return (
-    <div style={{
-      width: '26px', height: '34px', background: '#fff', borderRadius: '3px',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.5)', flexShrink: 0,
-    }}>
-      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: SC[s], lineHeight: 1 }}>
-        {r === 'T' ? '10' : r}
-      </span>
-      <span style={{ fontSize: '0.62rem', color: SC[s], lineHeight: 1 }}>{SL[s]}</span>
+    <div style={{ width:'24px', height:'32px', background:'#fff', borderRadius:'3px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', boxShadow:'0 1px 4px rgba(0,0,0,0.5)', flexShrink:0 }}>
+      <span style={{ fontSize:'0.65rem', fontWeight:800, color:SC[s], lineHeight:1 }}>{r==='T'?'10':r}</span>
+      <span style={{ fontSize:'0.6rem', color:SC[s], lineHeight:1 }}>{SL[s]}</span>
     </div>
   )
 }
 
-// ── Glow stat card ────────────────────────────────────────────────────────────
-function GlowStat({ label, value, color, glow }) {
-  return (
-    <div style={{
-      flex: 1, padding: '14px 16px', borderRadius: '10px',
-      background: C.surface, border: `1px solid ${C.border}`,
-      position: 'relative', overflow: 'hidden',
-      boxShadow: glow ? `0 0 20px ${color}22, 0 0 1px ${color}44` : 'none',
-    }}>
-      <div style={{ position: 'absolute', top: 0, left: '10%', right: '10%', height: '1px', background: `linear-gradient(90deg, transparent, ${color}88, transparent)` }} />
-      <div style={{ fontSize: '0.58rem', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.textMuted, marginBottom: '8px' }}>
-        {label}
-      </div>
-      <div style={{ fontSize: '1.8rem', fontWeight: 700, letterSpacing: '-0.03em', color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-        {value}
-      </div>
-    </div>
-  )
-}
+// ── Structured Analysis Card ──────────────────────────────────────────────────
+function AnalysisCard({ analysis }) {
+  const [expanded, setExpanded] = useState(false)
+  const isCorrect = analysis.mistakeType === 'correct'
+  const conf = analysis.confidence || 'medium'
+  const confColor = { high:C.primary, medium:'#FAD261', low:C.red }[conf]
 
-// ── Range matrix 13×13 ────────────────────────────────────────────────────────
-const RANKS13 = ['A','K','Q','J','T','9','8','7','6','5','4','3','2']
-function RangeMatrix() {
+  const streets = [
+    { label:'Preflop', value:analysis.preflop },
+    { label:'Flop',    value:analysis.flop },
+    { label:'Turn',    value:analysis.turn },
+    { label:'River',   value:analysis.river },
+  ].filter(s => s.value && s.value !== 'Not applicable')
+
   return (
-    <div>
-      <div style={{ fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.textMuted, marginBottom: '8px' }}>
-        Range Matrix (Placeholder)
+    <div style={{ display:'flex', gap:'8px', alignItems:'flex-start', marginBottom:'12px' }}>
+      <div style={{ width:'28px', height:'28px', minWidth:'28px', borderRadius:'8px', background:'linear-gradient(135deg,#aadaff,#92ccff,#5aabf5)', display:'flex', alignItems:'center', justifyContent:'center', marginTop:'2px', flexShrink:0 }}>
+        <BrainCircuit size={14} color="#071525" />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(13, 1fr)', gap: '2px' }}>
-        {RANKS13.map((r1, i) => RANKS13.map((r2, j) => {
-          const label = i < j ? `${r1}${r2}s` : i > j ? `${r2}${r1}o` : `${r1}${r1}`
-          const isPair = i === j
-          const isSuited = i < j
-          // Placeholder coloring: pairs + strong broadway = faint green
-          const isStrong = isPair || (i <= 3 && j <= 3)
-          return (
-            <div key={label} style={{
-              aspectRatio: '1',
-              borderRadius: '2px',
-              background: isStrong ? 'rgba(84,233,138,0.15)' : isSuited ? 'rgba(146,204,255,0.06)' : C.surfaceHi,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 'clamp(0.32rem, 0.8vw, 0.52rem)',
-              fontWeight: 500,
-              color: isStrong ? C.primary : isSuited ? C.secondary : C.textMuted,
-              letterSpacing: '-0.02em',
-              opacity: 0.9,
-              border: isPair ? `1px solid rgba(84,233,138,0.2)` : 'none',
-            }}>
-              {label}
+      <div style={{ flex:1, display:'flex', flexDirection:'column', gap:'8px' }}>
+
+        {/* Summary */}
+        <div style={{ padding:'10px 14px', borderRadius:'10px', background:'rgba(22,27,34,0.9)', border:`1px solid rgba(146,204,255,0.08)`, fontSize:'0.85rem', color:C.text, lineHeight:1.6 }}>
+          {analysis.summary}
+        </div>
+
+        {/* Biggest Mistake */}
+        <div style={{ padding:'12px 14px', borderRadius:'10px', background:isCorrect?C.primaryDim:C.redDim, border:`1px solid ${isCorrect?C.primaryBorder:C.redBorder}` }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'6px', flexWrap:'wrap' }}>
+            {isCorrect
+              ? <CheckCircle size={14} color={C.primary} />
+              : <AlertCircle size={14} color={C.red} />
+            }
+            <span style={{ fontSize:'0.6rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:isCorrect?C.primary:C.red }}>
+              ❌ {isCorrect ? 'Correct Play' : MISTAKE_LABELS[analysis.mistakeType] || 'Biggest Mistake'}
+            </span>
+            <span style={{ marginLeft:'auto', fontSize:'0.58rem', fontWeight:600, color:confColor, background:`rgba(${conf==='high'?'84,233,138':conf==='medium'?'250,210,97':'244,112,103'},0.1)`, padding:'2px 7px', borderRadius:'10px' }}>
+              {conf} confidence
+            </span>
+          </div>
+          <div style={{ fontSize:'0.875rem', color:C.text, lineHeight:1.6, fontWeight:600, marginBottom: analysis.whyWrong ? '8px' : 0 }}>
+            {analysis.biggestMistake}
+          </div>
+          {analysis.whyWrong && (
+            <div style={{ fontSize:'0.8rem', color:C.textMuted, lineHeight:1.6, borderTop:`1px solid rgba(255,255,255,0.06)`, paddingTop:'8px' }}>
+              🧠 {analysis.whyWrong}
             </div>
-          )
-        }))}
+          )}
+        </div>
+
+        {/* Reality Check */}
+        {analysis.realityCheck && (
+          <div style={{ padding:'10px 14px', borderRadius:'10px', background:'rgba(146,204,255,0.06)', border:`1px solid rgba(146,204,255,0.15)` }}>
+            <div style={{ fontSize:'0.58rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.secondary, marginBottom:'4px' }}>📊 Reality Check</div>
+            <div style={{ fontSize:'0.82rem', color:C.text, lineHeight:1.6 }}>{analysis.realityCheck}</div>
+          </div>
+        )}
+
+        {/* Better Line */}
+        {analysis.betterLine && analysis.betterLine !== 'Continue as played' && (
+          <div style={{ padding:'10px 14px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}` }}>
+            <div style={{ fontSize:'0.58rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.primary, marginBottom:'4px' }}>💡 Better Line</div>
+            <div style={{ fontSize:'0.875rem', color:C.text, lineHeight:1.6, fontWeight:600 }}>{analysis.betterLine}</div>
+          </div>
+        )}
+
+        {/* Leak Detected */}
+        {analysis.leakDetected && (
+          <div style={{ padding:'8px 14px', borderRadius:'8px', background:'rgba(255,192,172,0.06)', border:`1px solid rgba(255,192,172,0.2)`, display:'flex', alignItems:'center', gap:'8px' }}>
+            <span style={{ fontSize:'0.7rem' }}>🔥</span>
+            <div>
+              <span style={{ fontSize:'0.58rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.tertiary||'#ffc0ac' }}>Leak Detected: </span>
+              <span style={{ fontSize:'0.8rem', color:C.text, fontWeight:600 }}>{analysis.leakDetected}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Street breakdown — collapsible */}
+        {streets.length > 0 && (
+          <div>
+            <button onClick={() => setExpanded(v => !v)} style={{ display:'flex', alignItems:'center', gap:'5px', background:'none', border:'none', color:C.textMuted, cursor:'pointer', fontSize:'0.72rem', fontWeight:600, padding:'4px 0' }}>
+              {expanded ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
+              {expanded ? 'Hide' : 'Show'} street-by-street
+            </button>
+            {expanded && (
+              <div style={{ display:'flex', flexDirection:'column', gap:'6px', marginTop:'6px' }}>
+                {streets.map(s => (
+                  <div key={s.label} style={{ display:'flex', gap:'10px', padding:'8px 12px', background:C.surfaceHigh, borderRadius:'8px', border:`1px solid ${C.border}` }}>
+                    <span style={{ fontSize:'0.6rem', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:C.secondary, minWidth:'44px', flexShrink:0, marginTop:'2px' }}>{s.label}</span>
+                    <span style={{ fontSize:'0.82rem', color:C.text, lineHeight:1.6 }}>{s.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-// ── Message bubble ────────────────────────────────────────────────────────────
+// ── Plain chat bubble ─────────────────────────────────────────────────────────
 function Bubble({ msg }) {
   const isUser = msg.role === 'user'
+  if (msg.type === 'analysis' && msg.analysis) {
+    return <AnalysisCard analysis={msg.analysis} />
+  }
   return (
-    <div style={{ display: 'flex', flexDirection: isUser ? 'row-reverse' : 'row', gap: '8px', alignItems: 'flex-start', marginBottom: '14px' }}>
+    <div style={{ display:'flex', flexDirection:isUser?'row-reverse':'row', gap:'8px', alignItems:'flex-start', marginBottom:'12px' }}>
       {!isUser && (
-        <div style={{
-          width: '26px', height: '26px', minWidth: '26px', borderRadius: '6px',
-          background: 'linear-gradient(135deg, #aadaff, #92ccff, #5aabf5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '2px',
-          boxShadow: '0 0 12px rgba(146,204,255,0.3)',
-        }}>
-          <BrainCircuit size={13} color="#071525" />
+        <div style={{ width:'28px', height:'28px', minWidth:'28px', borderRadius:'8px', background:'linear-gradient(135deg,#aadaff,#92ccff,#5aabf5)', display:'flex', alignItems:'center', justifyContent:'center', marginTop:'2px', flexShrink:0 }}>
+          <BrainCircuit size={14} color="#071525" />
         </div>
       )}
       <div style={{
-        maxWidth: '80%', padding: '11px 14px',
-        borderRadius: isUser ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
-        background: isUser ? C.surfaceHigh : 'rgba(30,37,48,0.7)',
-        backdropFilter: isUser ? 'none' : 'blur(16px)',
-        border: isUser ? 'none' : `1px solid rgba(146,204,255,0.1)`,
-        fontSize: '0.84rem', lineHeight: 1.7, color: C.text, whiteSpace: 'pre-wrap',
-        position: 'relative', overflow: 'hidden',
+        maxWidth:'85%', padding:'12px 16px',
+        borderRadius: isUser ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
+        background: isUser ? C.surfaceHigh : 'rgba(22,27,34,0.9)',
+        border: `1px solid ${isUser ? 'transparent' : 'rgba(146,204,255,0.08)'}`,
+        fontSize:'0.875rem', lineHeight:1.75, color:C.text, whiteSpace:'pre-wrap', wordBreak:'break-word',
       }}>
-        {!isUser && <div style={{ position: 'absolute', top: 0, left: '20%', right: '20%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(146,204,255,0.3), transparent)' }} />}
         {msg.content}
       </div>
     </div>
   )
 }
 
-// ── Build system prompt ───────────────────────────────────────────────────────
-function buildSystem(ctx, hand) {
-  const handInfo = hand
-    ? `Analyzing hand from history: Position=${hand.position}, Street=${hand.street}, Hole cards=${hand.holeCards.join(' ')}, Board=${hand.boardCards.join(' ')||'none'}, Result=${hand.result}BB. Notes: ${hand.notes||'none'}.`
-    : `Current context: Position=${ctx.position}, Street=${ctx.street}, Stack=${ctx.stack}bb, Pot=${ctx.pot}bb.`
-  return `You are a professional Texas Hold'em poker coach specializing in GTO strategy and exploitative play.
-${handInfo}
-Format: 1) Recommended action, 2) Key reasoning (2-3 points), 3) Alternative lines, 4) One concept to study.
-Be concise (under 250 words), direct, and data-driven.`
-}
-
-// ── Main ──────────────────────────────────────────────────────────────────────
 export default function AICoach({ preloadedHand, onHandConsumed }) {
-  const [messages,    setMessages]    = useLocalStorage('aicoach-messages', [])
-  const [input,       setInput]       = useState('')
-  const [loading,     setLoading]     = useState(false)
-  const [apiKey,      setApiKey]      = useLocalStorage('aicoach-apikey', '')
-  const [showKey,     setShowKey]     = useState(false)
-  const [activeTab,   setActiveTab]   = useState('chat') // 'chat' | 'range'
-  const [ctx,         setCtx]         = useLocalStorage('aicoach-ctx', { position: 'BTN', street: 'Preflop', stack: '100', pot: '3' })
-  const [loadedHand,  setLoadedHand]  = useState(null)
+  const [messages,   setMessages]  = useLocalStorage('aicoach-messages', [])
+  const [input,      setInput]     = useState('')
+  const [gameType,   setGameType]  = useState('Live Cash')
+  const [playerType, setPlayerType]= useState('Unknown')
+  const [loading,    setLoading]   = useState(false)
+  const [loadedHand, setLoadedHand]= useState(null)
+  const [error,      setError]     = useState('')
   const bottomRef = useRef(null)
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior:'smooth' })
+  }, [messages, loading])
 
-  // Auto-load hand from HandHistory
   useEffect(() => {
     if (preloadedHand) {
       setLoadedHand(preloadedHand)
-      setCtx(prev => ({ ...prev, position: preloadedHand.position, street: preloadedHand.street }))
       onHandConsumed?.()
-      // Auto-prompt
-      const prompt = `Please analyze this hand: I was in ${preloadedHand.position} on the ${preloadedHand.street}. My hole cards: ${preloadedHand.holeCards.join(' ')}. Board: ${preloadedHand.boardCards.join(' ')||'preflop'}. Result: ${preloadedHand.result}BB. ${preloadedHand.notes ? 'Notes: '+preloadedHand.notes : ''}`
-      sendMessage(prompt)
+      const prompt = `Game type: ${gameType}. Analyze this hand: Position=${preloadedHand.position}, Street=${preloadedHand.street}, Hole cards=${preloadedHand.holeCards.join(' ')}, Board=${preloadedHand.boardCards?.join(' ')||'none'}, Result=${preloadedHand.result}BB.${preloadedHand.notes?' Notes: '+preloadedHand.notes:''}`
+      sendMessage(prompt, true)
     }
   }, [preloadedHand])
 
-  const sendMessage = async (text) => {
-    const content = text || input.trim()
-    if (!content) return
-    if (!apiKey) { setShowKey(true); return }
-    const userMsg = { role: 'user', content }
-    setMessages(prev => [...prev, userMsg])
+  const sendMessage = useCallback(async (text, isHandAnalysis = false) => {
+    const content = (text || input).trim()
+    if (!content || loading) return
+    setError('')
+
+    const userMsg = { role:'user', content }
+    const newMessages = [...messages, userMsg]
+    setMessages(newMessages)
     setInput('')
     setLoading(true)
+
     try {
-      const history = [...messages, userMsg].slice(-10)
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('/api/coach', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type':'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: buildSystem(ctx, loadedHand),
-          messages: history.map(m => ({ role: m.role, content: m.content })),
+          isHandAnalysis,
+          gameType,
+          playerType,
+          messages: newMessages.slice(-12).map(m => ({ role:m.role, content:m.content })),
         }),
       })
       const data = await res.json()
-      const reply = data.content?.[0]?.text || 'No response from model.'
-      setMessages(prev => [...prev, { role: 'assistant', content: reply }])
+      if (!res.ok) throw new Error(data.error || 'Request failed')
+
+      if (data.type === 'analysis' && data.analysis) {
+        setMessages(prev => [...prev, { role:'assistant', type:'analysis', content:'', analysis:data.analysis }])
+      } else {
+        setMessages(prev => [...prev, { role:'assistant', type:'reply', content: data.reply || 'No response.' }])
+      }
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}` }])
+      setError(err.message)
     } finally {
       setLoading(false)
     }
+  }, [input, loading, messages])
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
 
-  const inputBase = { padding: '10px 12px', background: C.surfaceHigh, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '0.82rem', outline: 'none', fontFamily: "'Inter', sans-serif", width: '100%', minHeight: '44px', colorScheme: 'dark' }
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.bg, overflow: 'hidden', fontFamily: "'Inter', sans-serif" }}>
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', background:C.bg, fontFamily:"'Inter',sans-serif" }}>
 
-      {/* ── Header ── */}
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '16px 20px', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+      {/* Header */}
+      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, padding:'14px 16px', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+          <div style={{ width:'32px', height:'32px', borderRadius:'8px', background:'linear-gradient(135deg,#aadaff,#92ccff,#5aabf5)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 0 16px rgba(146,204,255,0.2)' }}>
+            <BrainCircuit size={16} color="#071525" />
+          </div>
           <div>
-            <h1 style={{ fontSize: '1.1rem', fontWeight: 700, color: C.text, letterSpacing: '-0.01em', marginBottom: '2px' }}>AI Coach</h1>
-            <p style={{ fontSize: '0.72rem', color: C.textMuted }}>GTO-aware · Powered by Claude</p>
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={() => setShowKey(v => !v)} style={{
-              display: 'flex', alignItems: 'center', gap: '5px',
-              padding: '7px 12px', borderRadius: '8px', border: 'none',
-              background: apiKey ? C.primaryDim : 'rgba(255,192,172,0.1)',
-              color: apiKey ? C.primary : C.tertiary,
-              fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.04em',
-              textTransform: 'uppercase', cursor: 'pointer', minHeight: '44px',
-            }}>
-              <Key size={11} />
-              {apiKey ? 'Connected' : 'Set Key'}
-            </button>
-            <button onClick={() => setMessages([])} style={{
-              padding: '7px 10px', borderRadius: '8px', border: 'none',
-              background: C.surfaceHi, color: C.textMuted, cursor: 'pointer', minHeight: '44px',
-              display: 'flex', alignItems: 'center',
-            }}>
-              <RefreshCw size={13} />
-            </button>
+            <div style={{ fontSize:'0.9rem', fontWeight:700, color:C.text, letterSpacing:'-0.01em' }}>AI Coach</div>
+            <div style={{ fontSize:'0.62rem', color:C.textMuted }}>Powered by Gemini · GTO-aware</div>
           </div>
         </div>
+        <button onClick={() => { setMessages([]); setError(''); setLoadedHand(null) }}
+          style={{ width:'36px', height:'36px', borderRadius:'8px', border:'none', background:C.surfaceHi, color:C.textMuted, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <RefreshCw size={14} />
+        </button>
+      </div>
 
-        {/* API Key input */}
-        {showKey && (
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-            <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
-              placeholder="sk-ant-... (stored locally)"
-              style={{ ...inputBase, fontFamily: 'monospace', flex: 1 }}
-            />
-            <button onClick={() => setShowKey(false)} style={{
-              padding: '10px 16px', borderRadius: '8px', border: 'none',
-              background: 'linear-gradient(135deg, #67f09a, #54e98a, #2db866)',
-              color: '#061a0e', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', minHeight: '44px',
-            }}>Save</button>
+      {/* Loaded hand pill */}
+      {loadedHand && (
+        <div style={{ margin:'10px 16px 0', padding:'10px 14px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}`, display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap', flexShrink:0 }}>
+          <div style={{ display:'flex', gap:'4px' }}>
+            {loadedHand.holeCards.map(c => <MiniCard key={c} card={c} />)}
+          </div>
+          <div style={{ fontSize:'0.72rem', color:C.primary, flex:1 }}>
+            {loadedHand.position} · {loadedHand.street}
+            {loadedHand.result !== 0 && (
+              <span style={{ marginLeft:'8px', color:loadedHand.result>0?C.primary:C.red }}>
+                {loadedHand.result>0?'+':''}{loadedHand.result}BB
+              </span>
+            )}
+          </div>
+          <button onClick={() => setLoadedHand(null)} style={{ background:'none', border:'none', color:C.textMuted, cursor:'pointer', fontSize:'0.7rem', padding:'2px 6px' }}>✕</button>
+        </div>
+      )}
+
+      {/* Messages */}
+      <div style={{ flex:1, overflowY:'auto', padding:'16px', display:'flex', flexDirection:'column' }}>
+        {messages.length === 0 && (
+          <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'10px', opacity:0.25 }}>
+            <BrainCircuit size={44} color={C.secondary} />
+            <div style={{ fontSize:'0.75rem', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:C.text, textAlign:'center' }}>Ask anything about your hand</div>
+            <div style={{ fontSize:'0.7rem', color:C.textMuted, textAlign:'center', maxWidth:'220px', lineHeight:1.5 }}>Describe a spot or send from Hand History for structured analysis</div>
           </div>
         )}
 
-        {/* Loaded hand preview */}
-        {loadedHand && (
-          <div style={{
-            padding: '10px 14px', borderRadius: '8px', marginBottom: '10px',
-            background: C.primaryDim, border: `1px solid rgba(84,233,138,0.2)`,
-            display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-          }}>
-            <div style={{ display: 'flex', gap: '4px' }}>
-              {loadedHand.holeCards.map(c => <MiniCard key={c} card={c} />)}
+        {messages.map((msg, i) => <Bubble key={i} msg={msg} />)}
+
+        {loading && (
+          <div style={{ display:'flex', gap:'8px', alignItems:'flex-start', marginBottom:'12px' }}>
+            <div style={{ width:'28px', height:'28px', minWidth:'28px', borderRadius:'8px', background:'linear-gradient(135deg,#aadaff,#92ccff,#5aabf5)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <BrainCircuit size={14} color="#071525" />
             </div>
-            <div style={{ fontSize: '0.72rem', color: C.primary }}>
-              {loadedHand.position} · {loadedHand.street}
-              {loadedHand.result !== 0 && <span style={{ marginLeft: '8px', color: loadedHand.result > 0 ? C.primary : C.red }}>{loadedHand.result > 0 ? '+' : ''}{loadedHand.result}BB</span>}
+            <div style={{ padding:'12px 16px', background:'rgba(22,27,34,0.9)', border:`1px solid rgba(146,204,255,0.08)`, borderRadius:'4px 16px 16px 16px', display:'flex', gap:'5px', alignItems:'center' }}>
+              {[0,1,2].map(i => (
+                <div key={i} style={{ width:'6px', height:'6px', borderRadius:'50%', background:C.secondary, animation:`pulse 1.2s ${i*0.2}s infinite` }} />
+              ))}
             </div>
-            <button onClick={() => setLoadedHand(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '0.7rem' }}>
-              Clear
-            </button>
           </div>
         )}
 
-        {/* Context form */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
-          {[
-            { label: 'Position', key: 'position', opts: POSITIONS },
-            { label: 'Street',   key: 'street',   opts: STREETS },
-          ].map(({ label, key, opts }) => (
-            <div key={key}>
-              <div style={{ fontSize: '0.56rem', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.textMuted, marginBottom: '5px' }}>{label}</div>
-              <select value={ctx[key]} onChange={e => setCtx(p => ({ ...p, [key]: e.target.value }))}
-                style={{ ...inputBase, appearance: 'none', cursor: 'pointer', padding: '8px 10px' }}>
-                {opts.map(o => <option key={o}>{o}</option>)}
-              </select>
-            </div>
-          ))}
-          {[
-            { label: 'Stack (bb)', key: 'stack' },
-            { label: 'Pot (bb)',   key: 'pot' },
-          ].map(({ label, key }) => (
-            <div key={key}>
-              <div style={{ fontSize: '0.56rem', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.textMuted, marginBottom: '5px' }}>{label}</div>
-              <input value={ctx[key]} onChange={e => setCtx(p => ({ ...p, [key]: e.target.value }))}
-                style={{ ...inputBase, padding: '8px 10px' }} />
-            </div>
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div style={{ margin:'0 16px 8px', padding:'10px 14px', borderRadius:'8px', background:C.redDim, border:`1px solid ${C.redBorder}`, fontSize:'0.76rem', color:C.red, flexShrink:0 }}>
+          {error}
+        </div>
+      )}
+
+      {/* Input */}
+      <div style={{ padding:'12px 16px', background:C.surface, borderTop:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:'8px', flexShrink:0 }}>
+        {/* Game Type selector */}
+        <div style={{ display:'flex', gap:'6px' }}>
+          {['Live Cash', 'Online Cash', 'MTT'].map(type => (
+            <button key={type} onClick={() => setGameType(type)} style={{
+              flex:1, padding:'6px 8px', borderRadius:'8px', border:`1px solid ${gameType===type ? C.primary : C.border}`,
+              background: gameType===type ? C.primaryDim : 'transparent',
+              color: gameType===type ? C.primary : C.textMuted,
+              fontSize:'0.65rem', fontWeight:600, cursor:'pointer', transition:'all 0.15s',
+            }}>{type}</button>
           ))}
         </div>
-
-        {/* Glow stats */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-          <GlowStat label="Stack" value={`${ctx.stack}bb`} color={C.primary} glow />
-          <GlowStat label="Pot"   value={`${ctx.pot}bb`}   color={C.secondary} />
-          <GlowStat label="SPR"   value={(parseFloat(ctx.stack||1)/parseFloat(ctx.pot||1)).toFixed(1)} color={C.tertiary} />
-        </div>
-
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: '4px' }}>
-          {[['chat','Chat'], ['range','Range Matrix'], ['presets','Presets']].map(([k,l]) => (
-            <button key={k} onClick={() => setActiveTab(k)} style={{
-              padding: '6px 14px', borderRadius: '6px', border: 'none',
-              background: activeTab === k ? C.secondaryDim : 'transparent',
-              color: activeTab === k ? C.secondary : C.textMuted,
-              fontWeight: activeTab === k ? 600 : 400, fontSize: '0.72rem',
-              cursor: 'pointer', minHeight: '36px',
-            }}>{l}</button>
+        {/* Player Type selector */}
+        <div style={{ display:'flex', gap:'6px' }}>
+          {['Unknown', 'Nit', 'TAG', 'LAG', 'Fish', 'Rec'].map(type => (
+            <button key={type} onClick={() => setPlayerType(type)} style={{
+              flex:1, padding:'5px 4px', borderRadius:'8px', border:`1px solid ${playerType===type ? C.secondary : C.border}`,
+              background: playerType===type ? 'rgba(146,204,255,0.1)' : 'transparent',
+              color: playerType===type ? C.secondary : C.textMuted,
+              fontSize:'0.6rem', fontWeight:600, cursor:'pointer', transition:'all 0.15s',
+            }}>{type}</button>
           ))}
+        </div>
+        <div style={{ display:'flex', gap:'8px', alignItems:'flex-end' }}>
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Describe your hand... (Enter to send)"
+            rows={2}
+            style={{ flex:1, padding:'10px 12px', background:C.surfaceHigh, border:`1px solid ${C.border}`, borderRadius:'10px', color:C.text, fontSize:'0.875rem', resize:'none', outline:'none', fontFamily:"'Inter',sans-serif", lineHeight:1.6, colorScheme:'dark' }}
+          />
+          <button
+            onClick={() => sendMessage()}
+            disabled={!input.trim() || loading}
+            style={{
+              width:'44px', height:'44px', borderRadius:'10px', border:'none', flexShrink:0,
+              background: input.trim() && !loading ? 'linear-gradient(135deg,#67f09a,#54e98a,#2db866)' : C.surfaceHigh,
+              color: input.trim() && !loading ? '#061a0e' : C.textMuted,
+              cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
+              display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s',
+            }}
+          >
+            <Send size={16} />
+          </button>
         </div>
       </div>
 
-      {/* ── Content area ── */}
-      {activeTab === 'range' ? (
-        <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
-          <RangeMatrix />
-        </div>
-      ) : activeTab === 'presets' ? (
-        <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {PRESETS.map(p => (
-              <button key={p.label} onClick={() => { setActiveTab('chat'); sendMessage(p.prompt) }} style={{
-                padding: '14px 16px', borderRadius: '10px', border: `1px solid ${C.border}`,
-                background: C.surface, color: C.text, textAlign: 'left', cursor: 'pointer',
-                fontSize: '0.82rem', lineHeight: 1.5, minHeight: '44px',
-                display: 'flex', alignItems: 'center', gap: '10px',
-                transition: 'background 0.15s, border-color 0.15s',
-              }}
-                onMouseEnter={e => { e.currentTarget.style.background = C.surfaceHi; e.currentTarget.style.borderColor = C.borderHi }}
-                onMouseLeave={e => { e.currentTarget.style.background = C.surface; e.currentTarget.style.borderColor = C.border }}
-              >
-                <Zap size={14} color={C.secondary} style={{ flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 600, color: C.secondary, marginBottom: '3px', letterSpacing: '0.04em' }}>{p.label}</div>
-                  <div style={{ color: C.textMuted, fontSize: '0.78rem' }}>{p.prompt}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* Chat messages */}
-          <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column' }}>
-            {messages.length === 0 && (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', opacity: 0.3 }}>
-                <BrainCircuit size={40} color={C.secondary} />
-                <div style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.text }}>
-                  Describe your hand or use Presets
-                </div>
-              </div>
-            )}
-            {messages.map((msg, i) => <Bubble key={i} msg={msg} />)}
-            {loading && (
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '14px' }}>
-                <div style={{ width: '26px', height: '26px', minWidth: '26px', borderRadius: '6px', background: 'linear-gradient(135deg, #aadaff, #92ccff, #5aabf5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <BrainCircuit size={13} color="#071525" />
-                </div>
-                <div style={{ padding: '12px 14px', background: 'rgba(30,37,48,0.7)', backdropFilter: 'blur(16px)', border: `1px solid rgba(146,204,255,0.1)`, borderRadius: '4px 12px 12px 12px', display: 'flex', gap: '4px', alignItems: 'center' }}>
-                  {[0,1,2].map(i => (
-                    <div key={i} style={{ width: '5px', height: '5px', borderRadius: '50%', background: C.secondary, animation: `pulse 1.2s ${i*0.2}s infinite`, opacity: 0.7 }} />
-                  ))}
-                </div>
-              </div>
-            )}
-            <div ref={bottomRef} />
-          </div>
-
-          {/* Input bar */}
-          <div style={{ padding: '12px 16px', background: C.surface, borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px', alignItems: 'flex-end', flexShrink: 0 }}>
-            <textarea value={input} onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
-              placeholder="Describe your hand... (Enter to send)"
-              rows={2}
-              style={{ flex: 1, padding: '10px 12px', background: C.surfaceHigh, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '0.84rem', resize: 'none', outline: 'none', fontFamily: "'Inter', sans-serif", lineHeight: 1.5 }}
-            />
-            <button onClick={() => sendMessage()} disabled={!input.trim() || loading}
-              style={{
-                width: '44px', height: '44px', borderRadius: '8px', border: 'none', flexShrink: 0,
-                background: input.trim() ? 'linear-gradient(135deg, #67f09a, #54e98a, #2db866)' : C.surfaceHigh,
-                color: input.trim() ? '#061a0e' : C.textMuted,
-                cursor: input.trim() ? 'pointer' : 'not-allowed',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: input.trim() ? 'inset 0 1px 0 rgba(255,255,255,0.18), 0 0 16px rgba(84,233,138,0.25)' : 'none',
-                transition: 'all 0.15s',
-              }}>
-              <Send size={16} />
-            </button>
-          </div>
-        </>
-      )}
-
-      <style>{`@keyframes pulse { 0%,80%,100%{transform:scale(0.6);opacity:0.4} 40%{transform:scale(1);opacity:1} }`}</style>
+      <style>{`@keyframes pulse { 0%,80%,100%{transform:scale(0.5);opacity:0.3} 40%{transform:scale(1);opacity:1} }`}</style>
     </div>
   )
 }

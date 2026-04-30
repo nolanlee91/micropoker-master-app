@@ -217,6 +217,39 @@ function AnalysisCard({ analysis }) {
   )
 }
 
+// ── Follow-up answer card ─────────────────────────────────────────────────────
+function FollowUpCard({ followUp }) {
+  const conf     = followUp.confidence || 'medium'
+  const confColor = { high: C.primary, medium: '#FAD261', low: C.red }[conf]
+  const confBg    = `rgba(${conf === 'high' ? '84,233,138' : conf === 'medium' ? '250,210,97' : '244,112,103'},0.1)`
+
+  return (
+    <div style={{ display:'flex', gap:'8px', alignItems:'flex-start', marginBottom:'12px' }}>
+      <div style={{ width:'28px', height:'28px', minWidth:'28px', borderRadius:'8px', background:'linear-gradient(135deg,#aadaff,#92ccff,#5aabf5)', display:'flex', alignItems:'center', justifyContent:'center', marginTop:'2px', flexShrink:0 }}>
+        <BrainCircuit size={14} color="#071525" />
+      </div>
+      <div style={{ flex:1, display:'flex', flexDirection:'column', gap:'8px' }}>
+        {followUp.answer && (
+          <div style={{ padding:'10px 14px', borderRadius:'10px', background:'rgba(22,27,34,0.9)', border:'1px solid rgba(146,204,255,0.08)', fontSize:'0.875rem', color:C.text, lineHeight:1.7 }}>
+            {followUp.answer}
+          </div>
+        )}
+        {followUp.keyTakeaway && (
+          <div style={{ padding:'10px 14px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}`, display:'flex', flexDirection:'column', gap:'4px' }}>
+            <span style={{ fontSize:'0.55rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.primary }}>Key Takeaway</span>
+            <span style={{ fontSize:'0.82rem', color:C.text, lineHeight:1.6, fontWeight:600 }}>{followUp.keyTakeaway}</span>
+          </div>
+        )}
+        <div style={{ display:'flex', justifyContent:'flex-end' }}>
+          <span style={{ fontSize:'0.58rem', fontWeight:600, color:confColor, background:confBg, padding:'2px 8px', borderRadius:'10px' }}>
+            {conf} conf.
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Plain chat bubble ─────────────────────────────────────────────────────────
 function Bubble({ msg }) {
   const isUser = msg.role === 'user'
@@ -225,13 +258,24 @@ function Bubble({ msg }) {
     return <AnalysisCard analysis={msg.analysis} />
   }
 
+  if (msg.type === 'follow_up' && msg.followUp) {
+    return <FollowUpCard followUp={msg.followUp} />
+  }
+
   let content = msg.content || ''
 
+  // Last-resort: if assistant text looks like JSON, try to recover
   if (!isUser && content.trimStart().startsWith('{')) {
     console.warn('[coach] Bubble received JSON-like content, attempting recovery')
-    const recovered = parseAnalysisText(content)
-    if (recovered) return <AnalysisCard analysis={recovered} />
-    content = 'Analysis complete. Please try again for structured output.'
+    try {
+      const p = JSON.parse(content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim())
+      if (p?.type === 'follow_up' && p.answer) return <FollowUpCard followUp={p} />
+      if (p?.summary || p?.biggestMistake) {
+        const recovered = parseAnalysisText(content)
+        if (recovered) return <AnalysisCard analysis={recovered} />
+      }
+    } catch {}
+    content = 'Response received but could not be displayed. Please try again.'
   }
 
   return (
@@ -312,8 +356,15 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Request failed')
 
-      if (data.type === 'analysis' && data.analysis) {
-        setMessages(prev => [...prev, { role:'assistant', type:'analysis', content:'', analysis:data.analysis }])
+      if (data.type === 'follow_up' && data.followUp) {
+        setMessages(prev => [...prev, {
+          role:    'assistant',
+          type:    'follow_up',
+          content: data.followUp.answer || '',  // stored as text for Gemini context
+          followUp: data.followUp,
+        }])
+      } else if (data.type === 'analysis' && data.analysis) {
+        setMessages(prev => [...prev, { role:'assistant', type:'analysis', content: data.analysis.summary || '', analysis:data.analysis }])
         // Use ref (not closure) so we always save to the hand that was actually analyzed
         const hand = currentHandRef.current
         if (isHandAnalysis && hand?.id) {

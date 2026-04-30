@@ -26,6 +26,12 @@ export default async function handler(req, res) {
     Chinese:    'IMPORTANT: Write all text values in Simplified Chinese. Only translate text fields: summary, biggestMistake, whyWrong, betterLine. Do NOT translate JSON keys or enum values (leak_category, confidence, mistakeType, gameTypeUsed, villainTypeUsed must stay in English).',
   }
 
+  const langGuideFollowUp = {
+    English:    '',
+    Vietnamese: 'IMPORTANT: Write answer and keyTakeaway in Vietnamese. Do NOT translate JSON keys or the confidence value.',
+    Chinese:    'IMPORTANT: Write answer and keyTakeaway in Simplified Chinese. Do NOT translate JSON keys or the confidence value.',
+  }
+
   const gameGuide = {
     'Live Cash':   'Live Cash: population underbluffs, especially large river bets. Weight villain\'s range toward value. Bet sizing is often polarized and clumsy. Exploit passive tendencies.',
     'Online Cash': 'Online Cash: population is more aggressive and balanced. River overbets can be bluffs. Assume more solver-aware lines. GTO deviations are smaller.',
@@ -78,7 +84,27 @@ Rules:
 ${langGuide[responseLang] ? '\n' + langGuide[responseLang] : ''}
 Game context: ${gameGuide[gameContext] || gameGuide['Live Cash']}
 Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
-    : `You are a sharp poker coach. Game: ${gameContext}. ${gameGuide[gameContext] || ''} Villain: ${villainType}. ${villainGuide[villainType] || ''} All bet/pot amounts are in dollars unless user writes "bb". Direct and practical. Under 150 words. Exact actions only.${langGuide[responseLang] ? ' ' + langGuide[responseLang] : ''}`
+    : `You are a sharp poker coach answering a follow-up question.
+
+CRITICAL: Return ONLY a JSON object. No text before or after it. No markdown. No code fences. No backticks.
+
+Required format:
+{
+  "type": "follow_up",
+  "answer": "Direct answer, max 3 sentences",
+  "keyTakeaway": "One concise takeaway sentence",
+  "confidence": "high OR medium OR low"
+}
+
+Rules:
+- Only output the JSON. Nothing else.
+- Answer the user's question directly. Do not re-analyze the full hand unless explicitly asked.
+- For hypothetical questions ("what if X instead of Y"), answer the hypothetical clearly.
+- All amounts in dollars unless user writes "bb".
+- type must be exactly: follow_up
+${langGuideFollowUp[responseLang] ? langGuideFollowUp[responseLang] + '\n' : ''}
+Game context: ${gameGuide[gameContext] || gameGuide['Live Cash']}
+Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
 
   const contents = messages.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
@@ -143,8 +169,25 @@ Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
       })
     }
 
-    // General chat → plain text
-    return res.status(200).json({ type: 'reply', reply: raw })
+    // Follow-up → structured JSON
+    const parsedFollowUp = extractJSON(raw)
+    if (parsedFollowUp && typeof parsedFollowUp.answer === 'string') {
+      return res.status(200).json({
+        type: 'follow_up',
+        followUp: {
+          type:        'follow_up',
+          answer:      parsedFollowUp.answer      || '',
+          keyTakeaway: parsedFollowUp.keyTakeaway || '',
+          confidence:  ['high', 'medium', 'low'].includes(parsedFollowUp.confidence)
+                         ? parsedFollowUp.confidence : 'medium',
+        },
+      })
+    }
+
+    // Fallback: strip any JSON artifacts and return plain text
+    console.error('[coach] Follow-up JSON parse failed. Raw (first 300):', raw.slice(0, 300))
+    const stripped = raw.replace(/```[\s\S]*?```/g, '').replace(/\{[\s\S]*?\}/g, '').trim()
+    return res.status(200).json({ type: 'reply', reply: stripped || raw })
 
   } catch (err) {
     console.error('[coach] Error:', err)

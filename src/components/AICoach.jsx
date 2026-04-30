@@ -247,6 +247,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   const [input,      setInput]     = useState('')
   const [gameType,   setGameType]  = useState('Live Cash')
   const [playerType, setPlayerType]= useState('Unknown')
+  const [language,   setLanguage]  = useLocalStorage('aicoach-language', 'English')
   const [loading,    setLoading]   = useState(false)
   const [loadedHand, setLoadedHand]= useState(null)
   const [error,      setError]     = useState('')
@@ -284,6 +285,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           isHandAnalysis,
           gameType,
           playerType,
+          language,
           messages: newMessages.slice(-12).map(m => ({ role:m.role, content:m.content })),
         }),
       })
@@ -435,6 +437,18 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
               color: playerType===type ? C.secondary : C.textMuted,
               fontSize:'0.6rem', fontWeight:600, cursor:'pointer', transition:'all 0.15s',
             }}>{type}</button>
+          ))}
+        </div>
+        {/* Language selector */}
+        <div style={{ display:'flex', gap:'6px', alignItems:'center' }}>
+          <span style={{ fontSize:'0.58rem', fontWeight:600, color:C.textMuted, letterSpacing:'0.06em', textTransform:'uppercase', whiteSpace:'nowrap' }}>Lang</span>
+          {['English', 'Vietnamese', 'Chinese'].map(lang => (
+            <button key={lang} onClick={() => setLanguage(lang)} style={{
+              flex:1, padding:'5px 4px', borderRadius:'8px', border:`1px solid ${language===lang ? '#ffc0ac' : C.border}`,
+              background: language===lang ? 'rgba(255,192,172,0.1)' : 'transparent',
+              color: language===lang ? '#ffc0ac' : C.textMuted,
+              fontSize:'0.6rem', fontWeight:600, cursor:'pointer', transition:'all 0.15s',
+            }}>{lang}</button>
           ))}
         </div>
         <div style={{ display:'flex', gap:'8px', alignItems:'flex-end' }}>

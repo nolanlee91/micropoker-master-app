@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { messages, isHandAnalysis, gameType, playerType } = req.body
+  const { messages, isHandAnalysis, gameType, playerType, language } = req.body
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'No messages provided' })
   }
@@ -18,6 +18,13 @@ export default async function handler(req, res) {
 
   const gameContext  = gameType  || 'Live Cash'
   const villainType  = playerType || 'Unknown'
+  const responseLang = language   || 'English'
+
+  const langGuide = {
+    English:    '',
+    Vietnamese: 'IMPORTANT: Write all text values in Vietnamese. Only translate text fields: summary, biggestMistake, whyWrong, betterLine. Do NOT translate JSON keys or enum values (leak_category, confidence, mistakeType, gameTypeUsed, villainTypeUsed must stay in English).',
+    Chinese:    'IMPORTANT: Write all text values in Simplified Chinese. Only translate text fields: summary, biggestMistake, whyWrong, betterLine. Do NOT translate JSON keys or enum values (leak_category, confidence, mistakeType, gameTypeUsed, villainTypeUsed must stay in English).',
+  }
 
   const gameGuide = {
     'Live Cash':   'Live Cash: population underbluffs, especially large river bets. Weight villain\'s range toward value. Bet sizing is often polarized and clumsy. Exploit passive tendencies.',
@@ -61,16 +68,17 @@ Required format:
 
 Rules:
 - Only output the JSON. Nothing else.
+- AMOUNTS: All numeric values in user input are dollars ($) unless the user explicitly writes "bb" or "BB". Never convert dollars to BB. ev_impact must be in dollars.
 - In low-SPR pots, recommend jam or fold, not call.
 - QQ vs AK is close equity, not a crush. QQ vs AA/KK is bad shape.
 - ev_impact must be a number (dollars). Negative = lost EV. Positive = gained EV.
 - leak_category must be exactly one value from the list above.
 - gameTypeUsed must be exactly: ${gameContext}
 - villainTypeUsed must be exactly: ${villainType}
-
+${langGuide[responseLang] ? '\n' + langGuide[responseLang] : ''}
 Game context: ${gameGuide[gameContext] || gameGuide['Live Cash']}
 Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
-    : `You are a sharp poker coach. Game: ${gameContext}. ${gameGuide[gameContext] || ''} Villain: ${villainType}. ${villainGuide[villainType] || ''} Direct and practical. Under 150 words. Exact actions only.`
+    : `You are a sharp poker coach. Game: ${gameContext}. ${gameGuide[gameContext] || ''} Villain: ${villainType}. ${villainGuide[villainType] || ''} All bet/pot amounts are in dollars unless user writes "bb". Direct and practical. Under 150 words. Exact actions only.${langGuide[responseLang] ? ' ' + langGuide[responseLang] : ''}`
 
   const contents = messages.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',

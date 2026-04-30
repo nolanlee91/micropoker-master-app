@@ -263,20 +263,24 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   const [loading,     setLoading]    = useState(false)
   const [loadedHand,  setLoadedHand] = useState(null)
   const [error,       setError]      = useState('')
-  const bottomRef = useRef(null)
+  const bottomRef     = useRef(null)
+  // Ref always reflects the latest loadedHand — avoids stale closures in async callbacks
+  const currentHandRef = useRef(null)
+  useEffect(() => { currentHandRef.current = loadedHand }, [loadedHand])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior:'smooth' })
   }, [messages, loading])
 
-  // Preload hand without auto-analyzing — user must click Analyze
+  // Preload hand: key on hand ID so switching hands always fires the effect.
+  // Clear messages so the previous hand's conversation doesn't pollute the new analysis.
   useEffect(() => {
-    if (preloadedHand) {
-      setLoadedHand(preloadedHand)
-      setExtraNotes('')
-      onHandConsumed?.()
-    }
-  }, [preloadedHand])
+    if (!preloadedHand?.id) return
+    setLoadedHand(preloadedHand)
+    setMessages([])   // clear old conversation — new hand, fresh context
+    setExtraNotes('')
+    onHandConsumed?.()
+  }, [preloadedHand?.id])
 
   const sendMessage = useCallback(async (text, isHandAnalysis = false) => {
     const content = (text || input).trim()
@@ -310,9 +314,11 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
 
       if (data.type === 'analysis' && data.analysis) {
         setMessages(prev => [...prev, { role:'assistant', type:'analysis', content:'', analysis:data.analysis }])
-        if (isHandAnalysis && loadedHand?.id) {
-          updateHand(loadedHand.id, {
-            ...loadedHand,
+        // Use ref (not closure) so we always save to the hand that was actually analyzed
+        const hand = currentHandRef.current
+        if (isHandAnalysis && hand?.id) {
+          updateHand(hand.id, {
+            ...hand,
             aiAnalysis:   data.analysis,
             leakCategory: data.analysis.leak_category || null,
             evImpact:     typeof data.analysis.ev_impact === 'number' ? data.analysis.ev_impact : null,
@@ -326,9 +332,10 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           if (recovered) {
             console.log('[coach] Frontend recovered structured analysis from reply fallback')
             setMessages(prev => [...prev, { role:'assistant', type:'analysis', content:'', analysis:recovered }])
-            if (loadedHand?.id) {
-              updateHand(loadedHand.id, {
-                ...loadedHand,
+            const hand = currentHandRef.current
+            if (hand?.id) {
+              updateHand(hand.id, {
+                ...hand,
                 aiAnalysis:   recovered,
                 leakCategory: recovered.leak_category || null,
                 evImpact:     typeof recovered.ev_impact === 'number' ? recovered.ev_impact : null,
@@ -350,27 +357,31 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     } finally {
       setLoading(false)
     }
-  }, [input, loading, messages, playerType, loadedHand])
+  }, [input, loading, messages, playerType])
 
   // Build prompt from preloaded hand and trigger analysis
   const handleAnalyzeHand = useCallback(() => {
-    if (!loadedHand || loading) return
-    const h = loadedHand
-    const resultStr = fmtResult(h.result)
-    const boardStr  = h.boardCards?.length ? h.boardCards.join(' ') : 'none'
-    const noteParts = [h.notes, extraNotes.trim()].filter(Boolean).join(' | ')
+    const hand = loadedHand   // explicit capture at click time
+    if (!hand || loading) return
+
+    console.log('[coach] Analyzing hand:', hand.id, hand.holeCards, '| villain:', playerType)
+
+    const resultStr = fmtResult(hand.result)
+    const boardStr  = hand.boardCards?.length ? hand.boardCards.join(' ') : 'none'
+    const noteParts = [hand.notes, extraNotes.trim()].filter(Boolean).join(' | ')
     const prompt = [
       `Analyze this hand:`,
-      `Position=${h.position}`,
-      `Street=${h.street}`,
-      `Hole cards=${h.holeCards.join(' ')}`,
+      `Position=${hand.position}`,
+      `Street=${hand.street}`,
+      `Hole cards=${hand.holeCards.join(' ')}`,
       `Board=${boardStr}`,
       resultStr ? `Result=${resultStr}` : null,
       noteParts ? `Notes: ${noteParts}` : null,
     ].filter(Boolean).join(', ')
 
+    console.log('[coach] Prompt:', prompt)
     sendMessage(prompt, true)
-  }, [loadedHand, extraNotes, loading, sendMessage])
+  }, [loadedHand, extraNotes, loading, playerType, sendMessage])
 
   const handleKey = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }

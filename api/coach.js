@@ -122,7 +122,7 @@ Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
           contents,
           generationConfig: {
             maxOutputTokens: 4096,
-            temperature: isHandAnalysis ? 0.2 : 0.7,
+            temperature: isHandAnalysis ? 0.2 : 0.3,
           },
         }),
       }
@@ -133,6 +133,8 @@ Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
 
     const raw = data.candidates?.[0]?.content?.parts?.[0]?.text
     if (!raw) throw new Error('Empty response from Gemini')
+
+    console.log('[coach] request type:', isHandAnalysis ? 'analysis' : 'follow_up', '| raw (200):', raw.slice(0, 200))
 
     if (isHandAnalysis) {
       const parsed = extractJSON(raw)
@@ -169,23 +171,28 @@ Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
       })
     }
 
-    // Follow-up → structured JSON
+    // Follow-up → try structured JSON first
     const parsedFollowUp = extractJSON(raw)
-    if (parsedFollowUp && typeof parsedFollowUp.answer === 'string') {
-      return res.status(200).json({
-        type: 'follow_up',
-        followUp: {
-          type:        'follow_up',
-          answer:      parsedFollowUp.answer      || '',
-          keyTakeaway: parsedFollowUp.keyTakeaway || '',
-          confidence:  ['high', 'medium', 'low'].includes(parsedFollowUp.confidence)
-                         ? parsedFollowUp.confidence : 'medium',
-        },
-      })
+    if (parsedFollowUp) {
+      // Accept any shape: coerce answer/keyTakeaway to string
+      const answer      = parsedFollowUp.answer      != null ? String(parsedFollowUp.answer)      : ''
+      const keyTakeaway = parsedFollowUp.keyTakeaway != null ? String(parsedFollowUp.keyTakeaway) : ''
+      if (answer || keyTakeaway) {
+        return res.status(200).json({
+          type: 'follow_up',
+          followUp: {
+            type: 'follow_up',
+            answer,
+            keyTakeaway,
+            confidence: ['high', 'medium', 'low'].includes(parsedFollowUp.confidence)
+                          ? parsedFollowUp.confidence : 'medium',
+          },
+        })
+      }
     }
 
-    // Fallback: strip any JSON artifacts and return plain text
-    console.error('[coach] Follow-up JSON parse failed. Raw (first 300):', raw.slice(0, 300))
+    // Fallback: strip JSON artifacts and return plain text — NEVER empty
+    console.log('[coach] follow-up JSON parse failed, returning plain text')
     const stripped = raw.replace(/```[\s\S]*?```/g, '').replace(/\{[\s\S]*?\}/g, '').trim()
     return res.status(200).json({ type: 'reply', reply: stripped || raw })
 

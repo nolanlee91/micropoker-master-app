@@ -341,6 +341,8 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     setInput('')
     setLoading(true)
 
+    console.log('[coach] Sending request:', { isHandAnalysis, gameType, language, msgCount: newMessages.length })
+
     try {
       const res = await fetch('/api/coach', {
         method: 'POST',
@@ -356,16 +358,18 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Request failed')
 
+      console.log('[coach] Response type:', data.type)
+
       if (data.type === 'follow_up' && data.followUp) {
         setMessages(prev => [...prev, {
-          role:    'assistant',
-          type:    'follow_up',
-          content: data.followUp.answer || '',  // stored as text for Gemini context
+          role:     'assistant',
+          type:     'follow_up',
+          content:  data.followUp.answer || '',
           followUp: data.followUp,
         }])
+
       } else if (data.type === 'analysis' && data.analysis) {
         setMessages(prev => [...prev, { role:'assistant', type:'analysis', content: data.analysis.summary || '', analysis:data.analysis }])
-        // Use ref (not closure) so we always save to the hand that was actually analyzed
         const hand = currentHandRef.current
         if (isHandAnalysis && hand?.id) {
           updateHand(hand.id, {
@@ -375,14 +379,17 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
             evImpact:     typeof data.analysis.ev_impact === 'number' ? data.analysis.ev_impact : null,
           }).catch(() => {})
         }
+
       } else {
-        const replyText = data.reply || 'No response.'
+        // type === 'reply' fallback
+        const replyText = data.reply || ''
 
         if (isHandAnalysis) {
+          // Try to recover structured analysis
           const recovered = parseAnalysisText(replyText)
           if (recovered) {
             console.log('[coach] Frontend recovered structured analysis from reply fallback')
-            setMessages(prev => [...prev, { role:'assistant', type:'analysis', content:'', analysis:recovered }])
+            setMessages(prev => [...prev, { role:'assistant', type:'analysis', content: recovered.summary || '', analysis:recovered }])
             const hand = currentHandRef.current
             if (hand?.id) {
               updateHand(hand.id, {
@@ -399,9 +406,33 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
             setMessages(prev => [...prev, { role:'assistant', type:'reply', content:'Analysis received but could not be displayed. Please try again.' }])
             return
           }
-        }
+          setMessages(prev => [...prev, { role:'assistant', type:'reply', content: replyText || 'Analysis could not be displayed. Please try again.' }])
 
-        setMessages(prev => [...prev, { role:'assistant', type:'reply', content: replyText }])
+        } else {
+          // Follow-up fallback: wrap any text as a FollowUpCard — NEVER show "No response"
+          if (!replyText) {
+            setMessages(prev => [...prev, { role:'assistant', type:'reply', content:'Could not get a response. Please try again.' }])
+            return
+          }
+          // Try to parse as follow_up JSON (in case backend returned reply but body is JSON)
+          try {
+            const p = JSON.parse(replyText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim())
+            if (p && (p.answer || p.keyTakeaway)) {
+              setMessages(prev => [...prev, {
+                role:'assistant', type:'follow_up',
+                content: p.answer || '',
+                followUp: { type:'follow_up', answer: p.answer || '', keyTakeaway: p.keyTakeaway || '', confidence: p.confidence || 'medium' },
+              }])
+              return
+            }
+          } catch {}
+          // Wrap plain text as a follow-up answer card
+          setMessages(prev => [...prev, {
+            role:'assistant', type:'follow_up',
+            content: replyText,
+            followUp: { type:'follow_up', answer: replyText, keyTakeaway: '', confidence: 'medium' },
+          }])
+        }
       }
     } catch (err) {
       setError(err.message)

@@ -6,24 +6,34 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { messages, isHandAnalysis, gameType, playerType, language } = req.body
-  if (!messages || !Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: 'No messages provided' })
-  }
+  const {
+    // initial analysis fields
+    messages, isHandAnalysis, gameType, playerType, language,
+    // follow-up explicit fields
+    request_type, question, hand_context,
+    game_type, villain_type, response_language,
+  } = req.body
+
+  console.log('[coach] received:', { request_type, isHandAnalysis, msgCount: messages?.length })
 
   const GEMINI_API_KEY = process.env.GEMINI_API_KEY
   if (!GEMINI_API_KEY) {
     return res.status(500).json({ error: 'API key not configured' })
   }
 
-  const gameContext  = gameType  || 'Live Cash'
-  const villainType  = playerType || 'Unknown'
-  const responseLang = language   || 'English'
+  // Determine mode
+  const isFollowUp = request_type === 'follow_up'
+  const isAnalysis = isHandAnalysis === true && !isFollowUp
+
+  // Normalise context fields (accept both naming conventions)
+  const gameContext  = game_type  || gameType  || 'Live Cash'
+  const villainType  = villain_type || playerType || 'Unknown'
+  const responseLang = response_language || language || 'English'
 
   const langGuide = {
     English:    '',
-    Vietnamese: 'IMPORTANT: Write all text values in Vietnamese. Only translate text fields: summary, biggestMistake, whyWrong, betterLine. Do NOT translate JSON keys or enum values (leak_category, confidence, mistakeType, gameTypeUsed, villainTypeUsed must stay in English).',
-    Chinese:    'IMPORTANT: Write all text values in Simplified Chinese. Only translate text fields: summary, biggestMistake, whyWrong, betterLine. Do NOT translate JSON keys or enum values (leak_category, confidence, mistakeType, gameTypeUsed, villainTypeUsed must stay in English).',
+    Vietnamese: 'IMPORTANT: Write all text values in Vietnamese. Only translate text fields: summary, biggestMistake, whyWrong, betterLine. Do NOT translate JSON keys or enum values.',
+    Chinese:    'IMPORTANT: Write all text values in Simplified Chinese. Only translate text fields: summary, biggestMistake, whyWrong, betterLine. Do NOT translate JSON keys or enum values.',
   }
 
   const langGuideFollowUp = {
@@ -33,18 +43,18 @@ export default async function handler(req, res) {
   }
 
   const gameGuide = {
-    'Live Cash':   'Live Cash: population underbluffs, especially large river bets. Weight villain\'s range toward value. Bet sizing is often polarized and clumsy. Exploit passive tendencies.',
-    'Online Cash': 'Online Cash: population is more aggressive and balanced. River overbets can be bluffs. Assume more solver-aware lines. GTO deviations are smaller.',
-    'MTT':         'MTT: stack depth and ICM matter. Factor tournament life into close spots. Near the bubble or final table, tighten up marginal calls. Short stacks = push/fold range.',
+    'Live Cash':   'Live Cash: population underbluffs, especially large river bets. Weight villain\'s range toward value.',
+    'Online Cash': 'Online Cash: population is more aggressive and balanced. River overbets can be bluffs.',
+    'MTT':         'MTT: stack depth and ICM matter. Factor tournament life. Near bubble/FT, tighten marginal calls.',
   }
 
   const villainGuide = {
     'Unknown': 'Villain type unknown: use population defaults.',
-    'Nit':     'Nit: extremely tight range. 3-bets and large bets are almost always value. Bluff rarely. Fold to aggression is usually correct.',
-    'TAG':     'TAG: solid balanced range. Respect aggression but do not over-fold. Look for thin value and well-timed bluffs.',
-    'LAG':     'LAG: wide range, high bluff frequency. Call down wider on boards that miss their range. Do not over-fold to river bets.',
-    'Fish':    'Fish: wide calls, passive mistakes, very unbalanced range. Do not bluff. Bet thin for value. They rarely fold made hands.',
-    'Rec':     'Rec: recreational player, wide and passive. Value-bet relentlessly. Bluffing is low EV. They call too wide but rarely raise as bluffs.',
+    'Nit':     'Nit: extremely tight range. 3-bets/large bets are almost always value. Fold to aggression is usually correct.',
+    'TAG':     'TAG: solid balanced range. Respect aggression but do not over-fold.',
+    'LAG':     'LAG: wide range, high bluff frequency. Call down wider on boards that miss their range.',
+    'Fish':    'Fish: wide calls, passive mistakes. Do not bluff. Bet thin for value.',
+    'Rec':     'Rec: recreational, wide and passive. Value-bet relentlessly. Bluffing is low EV.',
   }
 
   const LEAK_CATEGORIES = [
@@ -53,8 +63,46 @@ export default async function handler(req, res) {
     'draw_chasing', 'no_clear_leak',
   ]
 
-  const systemText = isHandAnalysis
-    ? `You are a sharp poker coach. Analyze the hand.
+  // ── Build Gemini contents from messages (filter out empty text) ───────────
+  const rawMessages = Array.isArray(messages) ? messages : []
+  const contents = rawMessages
+    .filter(m => m.content && typeof m.content === 'string' && m.content.trim())
+    .map(m => ({
+      role:  m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content.trim() }],
+    }))
+
+  // For follow-up: if we have question but it's not in messages yet, append it
+  if (isFollowUp && question && !rawMessages.some(m => m.content === question)) {
+    contents.push({ role: 'user', parts: [{ text: question }] })
+  }
+
+  // Gemini requires at least one content item
+  if (contents.length === 0) {
+    return res.status(400).json({ error: 'No message content provided' })
+  }
+
+  // ── Build hand context string (for follow-up) ─────────────────────────────
+  let handContextStr = ''
+  if (hand_context) {
+    const h = hand_context
+    const holeCards = Array.isArray(h.holeCards) ? h.holeCards.join(' ') : ''
+    const board     = Array.isArray(h.boardCards) && h.boardCards.length ? h.boardCards.join(' ') : 'none'
+    const result    = h.result != null && h.result !== 0
+      ? (h.result > 0 ? `+$${h.result}` : `-$${Math.abs(h.result)}`)
+      : ''
+    handContextStr = [
+      `Hand context:`,
+      `- Hole cards: ${holeCards}`,
+      `- Board: ${board}`,
+      `- Position: ${h.position || ''}`,
+      result ? `- Result: ${result}` : null,
+      h.notes ? `- Notes: ${h.notes}` : null,
+    ].filter(Boolean).join('\n')
+  }
+
+  // ── System prompts ────────────────────────────────────────────────────────
+  const analysisSystemText = `You are a sharp poker coach. Analyze the hand.
 
 CRITICAL: Return ONLY a JSON object. No text before or after it. No markdown. No code fences. No backticks.
 
@@ -64,7 +112,7 @@ Required format:
   "biggestMistake": "The main error in one direct sentence",
   "mistakeType": "overcall OR overbet OR underbet OR bad_bluff OR wrong_fold OR bad_sizing OR missed_value OR correct",
   "leak_category": "${LEAK_CATEGORIES.join(' OR ')}",
-  "ev_impact": <number in dollars, negative if user lost EV, positive if profitable, conservative estimate>,
+  "ev_impact": <number in dollars, negative if user lost EV, positive if profitable>,
   "confidence": "high OR medium OR low",
   "whyWrong": "Why this was wrong, max 2 lines",
   "betterLine": "Exact action: jam / fold / call / raise to X bb",
@@ -74,9 +122,7 @@ Required format:
 
 Rules:
 - Only output the JSON. Nothing else.
-- AMOUNTS: All numeric values in user input are dollars ($) unless the user explicitly writes "bb" or "BB". Never convert dollars to BB. ev_impact must be in dollars.
-- In low-SPR pots, recommend jam or fold, not call.
-- QQ vs AK is close equity, not a crush. QQ vs AA/KK is bad shape.
+- All amounts are in dollars unless user explicitly writes "bb".
 - ev_impact must be a number (dollars). Negative = lost EV. Positive = gained EV.
 - leak_category must be exactly one value from the list above.
 - gameTypeUsed must be exactly: ${gameContext}
@@ -84,32 +130,30 @@ Rules:
 ${langGuide[responseLang] ? '\n' + langGuide[responseLang] : ''}
 Game context: ${gameGuide[gameContext] || gameGuide['Live Cash']}
 Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
-    : `You are a sharp poker coach answering a follow-up question.
 
+  const followUpSystemText = `You are a sharp poker coach answering a follow-up question.
+${handContextStr ? '\n' + handContextStr + '\n' : ''}
 CRITICAL: Return ONLY a JSON object. No text before or after it. No markdown. No code fences. No backticks.
 
 Required format:
 {
   "type": "follow_up",
-  "answer": "Direct answer, max 3 sentences",
+  "answer": "Direct answer to the question, max 3 sentences",
   "keyTakeaway": "One concise takeaway sentence",
   "confidence": "high OR medium OR low"
 }
 
 Rules:
 - Only output the JSON. Nothing else.
-- Answer the user's question directly. Do not re-analyze the full hand unless explicitly asked.
-- For hypothetical questions ("what if X instead of Y"), answer the hypothetical clearly.
+- Answer the specific question asked. Do not re-analyze the full hand unless asked.
+- For hypothetical questions (e.g. "what if KJ instead of K6"), answer the hypothetical clearly.
 - All amounts in dollars unless user writes "bb".
-- type must be exactly: follow_up
-${langGuideFollowUp[responseLang] ? langGuideFollowUp[responseLang] + '\n' : ''}
+- type field must be exactly: follow_up
+${langGuideFollowUp[responseLang] ? '\n' + langGuideFollowUp[responseLang] : ''}
 Game context: ${gameGuide[gameContext] || gameGuide['Live Cash']}
 Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
 
-  const contents = messages.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }))
+  const systemText = isAnalysis ? analysisSystemText : followUpSystemText
 
   try {
     const geminiRes = await fetch(
@@ -122,7 +166,7 @@ Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
           contents,
           generationConfig: {
             maxOutputTokens: 4096,
-            temperature: isHandAnalysis ? 0.2 : 0.3,
+            temperature: isAnalysis ? 0.2 : 0.3,
           },
         }),
       }
@@ -134,9 +178,10 @@ Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
     const raw = data.candidates?.[0]?.content?.parts?.[0]?.text
     if (!raw) throw new Error('Empty response from Gemini')
 
-    console.log('[coach] request type:', isHandAnalysis ? 'analysis' : 'follow_up', '| raw (200):', raw.slice(0, 200))
+    console.log('[coach] raw response (200):', raw.slice(0, 200))
 
-    if (isHandAnalysis) {
+    // ── Initial analysis ────────────────────────────────────────────────────
+    if (isAnalysis) {
       const parsed = extractJSON(raw)
 
       if (parsed) {
@@ -159,22 +204,17 @@ Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
         return res.status(200).json({ type: 'analysis', analysis: out })
       }
 
-      // All JSON extraction attempts failed — log and return safe fallback
-      console.error('[coach] JSON parse failed. Raw (first 300):', raw.slice(0, 300))
-      const fallback = raw
-        .replace(/```[\s\S]*?```/g, '')
-        .replace(/\{[\s\S]*?\}/g, '')
-        .trim()
+      console.error('[coach] analysis JSON parse failed. Raw (300):', raw.slice(0, 300))
+      const fallback = raw.replace(/```[\s\S]*?```/g, '').replace(/\{[\s\S]*?\}/g, '').trim()
       return res.status(200).json({
         type:  'reply',
-        reply: fallback || 'Analysis complete, but structured output could not be parsed. Please try again.',
+        reply: fallback || raw,
       })
     }
 
-    // Follow-up → try structured JSON first
+    // ── Follow-up ───────────────────────────────────────────────────────────
     const parsedFollowUp = extractJSON(raw)
     if (parsedFollowUp) {
-      // Accept any shape: coerce answer/keyTakeaway to string
       const answer      = parsedFollowUp.answer      != null ? String(parsedFollowUp.answer)      : ''
       const keyTakeaway = parsedFollowUp.keyTakeaway != null ? String(parsedFollowUp.keyTakeaway) : ''
       if (answer || keyTakeaway) {
@@ -191,26 +231,24 @@ Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
       }
     }
 
-    // Fallback: strip JSON artifacts and return plain text — NEVER empty
+    // Fallback: return plain text — NEVER empty
     console.log('[coach] follow-up JSON parse failed, returning plain text')
     const stripped = raw.replace(/```[\s\S]*?```/g, '').replace(/\{[\s\S]*?\}/g, '').trim()
     return res.status(200).json({ type: 'reply', reply: stripped || raw })
 
   } catch (err) {
-    console.error('[coach] Error:', err)
+    console.error('[coach] error:', err.message)
     return res.status(500).json({ error: err.message || 'Coach unavailable. Please try again.' })
   }
 }
 
-// ── JSON extraction: tries multiple strategies ─────────────────────────────────
+// ── JSON extraction: tries multiple strategies ──────────────────────────────
 function extractJSON(text) {
-  // Strategy 1: direct parse
   try {
     const p = JSON.parse(text)
     if (p && typeof p === 'object' && !Array.isArray(p)) return p
   } catch {}
 
-  // Strategy 2: strip markdown code fences, then parse
   const stripped = text
     .replace(/```json\s*/gi, '')
     .replace(/```\s*/g, '')
@@ -220,7 +258,6 @@ function extractJSON(text) {
     if (p && typeof p === 'object' && !Array.isArray(p)) return p
   } catch {}
 
-  // Strategy 3: extract first {...} block
   const match = stripped.match(/\{[\s\S]*\}/)
   if (match) {
     try {

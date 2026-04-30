@@ -354,19 +354,34 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     setInput('')
     setLoading(true)
 
-    console.log('[coach] Sending request:', { isHandAnalysis, gameType, language, msgCount: newMessages.length })
+    // Build payload — follow-up gets explicit hand context + question
+    const msgHistory = newMessages.slice(-12).map(m => ({ role:m.role, content:m.content || '' }))
+
+    const payload = isHandAnalysis
+      ? {
+          isHandAnalysis: true,
+          gameType,
+          playerType,
+          language,
+          messages: msgHistory,
+        }
+      : {
+          request_type:      'follow_up',
+          question:          content,
+          hand_context:      currentHandRef.current || null,
+          game_type:         gameType,
+          villain_type:      playerType,
+          response_language: language,
+          messages:          msgHistory,
+        }
+
+    console.log('[coach] sending:', isHandAnalysis ? 'analysis' : 'follow_up', '|', content.slice(0, 80))
 
     try {
       const res = await fetch('/api/coach', {
         method: 'POST',
         headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify({
-          isHandAnalysis,
-          gameType,
-          playerType,
-          language,
-          messages: newMessages.slice(-12).map(m => ({ role:m.role, content:m.content })),
-        }),
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Request failed')

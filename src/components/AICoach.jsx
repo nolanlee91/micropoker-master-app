@@ -66,8 +66,11 @@ function fmtResult(val) {
   return val > 0 ? `+$${val}` : `-$${Math.abs(val)}`
 }
 
+// Tolerant parser: accepts any JSON that has at least one recognisable analysis field.
+// Does NOT require specific fields — renders whatever is present.
 function parseAnalysisText(text) {
   if (!text || typeof text !== 'string') return null
+
   const attempts = [
     text,
     text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim(),
@@ -75,13 +78,22 @@ function parseAnalysisText(text) {
   const m = text.match(/\{[\s\S]*\}/)
   if (m) attempts.push(m[0])
 
+  const ANALYSIS_FIELDS = ['summary', 'biggestMistake', 'whyWrong', 'betterLine', 'answer']
+
   for (const s of attempts) {
     try {
       const p = JSON.parse(s)
       if (!p || typeof p !== 'object' || Array.isArray(p)) continue
-      if (!p.summary && !p.biggestMistake) continue
+      // Accept if any recognised analysis field is present (string or non-empty)
+      const hasField = ANALYSIS_FIELDS.some(k => p[k] && typeof p[k] === 'string')
+      if (!hasField) continue
+
+      // Use "answer" as summary fallback (follow_up schema sent to analysis path)
+      const summary = typeof p.summary === 'string' ? p.summary
+                    : typeof p.answer  === 'string' ? p.answer : ''
+
       return {
-        summary:         typeof p.summary        === 'string' ? p.summary        : '',
+        summary,
         biggestMistake:  typeof p.biggestMistake === 'string' ? p.biggestMistake : '',
         mistakeType:     VALID_MISTAKE_TYPES.includes(p.mistakeType) ? p.mistakeType : 'other',
         leak_category:   VALID_LEAK_CATS.includes(p.leak_category)  ? p.leak_category : 'no_clear_leak',
@@ -267,15 +279,16 @@ function Bubble({ msg }) {
   // Last-resort: if assistant text looks like JSON, try to recover
   if (!isUser && content.trimStart().startsWith('{')) {
     console.warn('[coach] Bubble received JSON-like content, attempting recovery')
+    // Try follow_up schema first
     try {
       const p = JSON.parse(content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim())
-      if (p?.type === 'follow_up' && p.answer) return <FollowUpCard followUp={p} />
-      if (p?.summary || p?.biggestMistake) {
-        const recovered = parseAnalysisText(content)
-        if (recovered) return <AnalysisCard analysis={recovered} />
-      }
+      if (p?.type === 'follow_up' && (p.answer || p.keyTakeaway)) return <FollowUpCard followUp={p} />
     } catch {}
-    content = 'Response received but could not be displayed. Please try again.'
+    // Try analysis schema (tolerant parser)
+    const recovered = parseAnalysisText(content)
+    if (recovered) return <AnalysisCard analysis={recovered} />
+    // Worst case: show raw text in a plain answer card (never blank error)
+    return <FollowUpCard followUp={{ type:'follow_up', answer: content, keyTakeaway:'', confidence:'low' }} />
   }
 
   return (
@@ -401,12 +414,14 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
             }
             return
           }
-          if (replyText.trimStart().startsWith('{')) {
-            console.error('[coach] Reply looks like JSON but failed to parse:', replyText.slice(0, 200))
-            setMessages(prev => [...prev, { role:'assistant', type:'reply', content:'Analysis received but could not be displayed. Please try again.' }])
-            return
-          }
-          setMessages(prev => [...prev, { role:'assistant', type:'reply', content: replyText || 'Analysis could not be displayed. Please try again.' }])
+          // Could not parse as analysis — show raw text in an answer card (never blank-error)
+          console.error('[coach] analysis reply could not be parsed, showing as text:', replyText.slice(0, 200))
+          const displayText = replyText || 'Analysis could not be displayed. Please try again.'
+          setMessages(prev => [...prev, {
+            role: 'assistant', type: 'follow_up',
+            content: displayText,
+            followUp: { type: 'follow_up', answer: displayText, keyTakeaway: '', confidence: 'low' },
+          }])
 
         } else {
           // Follow-up fallback: wrap any text as a FollowUpCard — NEVER show "No response"

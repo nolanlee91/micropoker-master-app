@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { BrainCircuit, Send, RefreshCw, AlertCircle, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useData } from '../context/DataContext'
+import { evaluateHeroHand } from '../utils/handEvaluator'
 
 const C = {
   bg:          '#0B0E14',
@@ -357,7 +358,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     onHandConsumed?.()
   }, [preloadedHand?.id])
 
-  const sendMessage = useCallback(async (text, isHandAnalysis = false) => {
+  const sendMessage = useCallback(async (text, isHandAnalysis = false, handEval = null) => {
     const content = (text || input).trim()
     if (!content || loading) return
     setError('')
@@ -382,6 +383,10 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           playerType,
           language,
           messages: msgHistory,
+          // Deterministic hand evaluation — backend injects these into prompt
+          verifiedHeroHandStrength: handEval?.heroHandStrength || '',
+          verifiedBestFiveCards:    handEval?.bestFiveCards    || [],
+          verifiedBoardTexture:     handEval?.boardTexture?.description || '',
         }
       : {
           request_type:      'follow_up',
@@ -415,6 +420,13 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
         }])
 
       } else if (data.type === 'analysis' && data.analysis) {
+        // Override AI hand assessment with deterministic values — never trust AI to read its own cards
+        if (handEval?.heroHandStrength) {
+          data.analysis.heroHandStrength = handEval.heroHandStrength
+        }
+        if (handEval?.boardTexture?.description) {
+          data.analysis.boardTexture = handEval.boardTexture.description
+        }
         setMessages(prev => [...prev, { role:'assistant', type:'analysis', content: data.analysis.summary || '', analysis:data.analysis }])
         const hand = currentHandRef.current
         if (isHandAnalysis && hand?.id) {
@@ -494,6 +506,9 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     const hand = loadedHand   // explicit capture at click time
     if (!hand || loading) return
 
+    // Deterministic hand evaluation — before calling AI
+    const handEval = evaluateHeroHand(hand.holeCards, hand.boardCards)
+    console.log('[coach] hand eval:', handEval.heroHandStrength, '| best5:', handEval.bestFiveCards, '| board:', handEval.boardTexture?.description)
     console.log('[coach] Analyzing hand:', hand.id, hand.holeCards, '| villain:', playerType)
 
     const resultStr = fmtResult(hand.result)
@@ -510,7 +525,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     ].filter(Boolean).join(', ')
 
     console.log('[coach] Prompt:', prompt)
-    sendMessage(prompt, true)
+    sendMessage(prompt, true, handEval)
   }, [loadedHand, extraNotes, loading, playerType, sendMessage])
 
   const handleKey = (e) => {

@@ -9,6 +9,8 @@ export default async function handler(req, res) {
   const {
     // initial analysis fields
     messages, isHandAnalysis, gameType, playerType, language,
+    // deterministic hand evaluation (computed on frontend)
+    verifiedHeroHandStrength, verifiedBestFiveCards, verifiedBoardTexture,
     // follow-up explicit fields
     request_type, question, hand_context,
     game_type, villain_type, response_language,
@@ -147,7 +149,15 @@ Rules:
 - villainTypeUsed must be exactly: ${villainType}
 ${langGuide[responseLang] ? '\n' + langGuide[responseLang] : ''}
 Game context: ${gameGuide[gameContext] || gameGuide['Live Cash']}
-Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
+Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}
+${verifiedHeroHandStrength
+  ? `\nVERIFIED HERO HAND (computed by deterministic code — YOU MUST USE THIS EXACT VALUE):
+  heroHandStrength = "${verifiedHeroHandStrength}"${verifiedBestFiveCards?.length ? `\n  Best 5 cards: ${verifiedBestFiveCards.join(' ')}` : ''}${verifiedBoardTexture ? `\n  Board texture: ${verifiedBoardTexture}` : ''}
+CRITICAL RULES:
+- Copy heroHandStrength EXACTLY as shown above into your JSON response.
+- Do NOT infer a different hand from the cards or from notes.
+- Notes may describe the OPPONENT's hand — do NOT apply that to the hero.`
+  : ''}`
 
   const followUpSystemText = `You are a sharp poker coach answering a follow-up question.
 ${handContextStr ? '\n' + handContextStr + '\n' : ''}

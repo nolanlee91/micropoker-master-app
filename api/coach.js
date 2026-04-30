@@ -19,29 +19,58 @@ export default async function handler(req, res) {
   const gameContext  = gameType  || 'Live Cash'
   const villainType  = playerType || 'Unknown'
 
+  const gameGuide = {
+    'Live Cash':   'Live Cash: population underbluffs, especially large river bets. Weight villain\'s range toward value. Bet sizing is often polarized and clumsy. Exploit passive tendencies.',
+    'Online Cash': 'Online Cash: population is more aggressive and balanced. River overbets can be bluffs. Assume more solver-aware lines. GTO deviations are smaller.',
+    'MTT':         'MTT: stack depth and ICM matter. Factor tournament life into close spots. Near the bubble or final table, tighten up marginal calls. Short stacks = push/fold range.',
+  }
+
+  const villainGuide = {
+    'Unknown': 'Villain type unknown: use population defaults.',
+    'Nit':     'Nit: extremely tight range. 3-bets and large bets are almost always value. Bluff rarely. Fold to aggression is usually correct.',
+    'TAG':     'TAG: solid balanced range. Respect aggression but do not over-fold. Look for thin value and well-timed bluffs.',
+    'LAG':     'LAG: wide range, high bluff frequency. Call down wider on boards that miss their range. Do not over-fold to river bets.',
+    'Fish':    'Fish: wide calls, passive mistakes, very unbalanced range. Do not bluff. Bet thin for value. They rarely fold made hands.',
+    'Rec':     'Rec: recreational player, wide and passive. Value-bet relentlessly. Bluffing is low EV. They call too wide but rarely raise as bluffs.',
+  }
+
+  const LEAK_CATEGORIES = [
+    'river_call_too_wide', 'turn_call_too_wide', 'overbluff', 'missed_value',
+    'passive_play', 'bad_preflop', 'overpair_overplay', 'top_pair_overplay',
+    'draw_chasing', 'no_clear_leak',
+  ]
+
   const systemText = isHandAnalysis
     ? `You are a sharp poker coach. Analyze the hand.
 
-CRITICAL: Return ONLY a JSON object. No text before it. No text after it. No markdown. No code blocks. No backticks.
+CRITICAL: Return ONLY a JSON object. No text before or after it. No markdown. No code fences. No backticks.
 
 Required format:
 {
   "summary": "One blunt verdict sentence",
   "biggestMistake": "The main error in one direct sentence",
   "mistakeType": "overcall OR overbet OR underbet OR bad_bluff OR wrong_fold OR bad_sizing OR missed_value OR correct",
+  "leak_category": "${LEAK_CATEGORIES.join(' OR ')}",
+  "ev_impact": <number in dollars, negative if user lost EV, positive if profitable, conservative estimate>,
+  "confidence": "high OR medium OR low",
   "whyWrong": "Why this was wrong, max 2 lines",
   "betterLine": "Exact action: jam / fold / call / raise to X bb",
-  "confidence": "high OR medium OR low"
+  "gameTypeUsed": "${gameContext}",
+  "villainTypeUsed": "${villainType}"
 }
 
 Rules:
 - Only output the JSON. Nothing else.
 - In low-SPR pots, recommend jam or fold, not call.
-- For live cash, treat 4-bets as value-heavy unless noted.
 - QQ vs AK is close equity, not a crush. QQ vs AA/KK is bad shape.
-Game: ${gameContext}
-Villain type: ${villainType}`
-    : `You are a sharp poker coach. Game: ${gameContext}. Villain type: ${villainType}. Direct and practical. Under 150 words. Exact actions only.`
+- ev_impact must be a number (dollars). Negative = lost EV. Positive = gained EV.
+- leak_category must be exactly one value from the list above.
+- gameTypeUsed must be exactly: ${gameContext}
+- villainTypeUsed must be exactly: ${villainType}
+
+Game context: ${gameGuide[gameContext] || gameGuide['Live Cash']}
+Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
+    : `You are a sharp poker coach. Game: ${gameContext}. ${gameGuide[gameContext] || ''} Villain: ${villainType}. ${villainGuide[villainType] || ''} Direct and practical. Under 150 words. Exact actions only.`
 
   const contents = messages.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
@@ -75,13 +104,21 @@ Villain type: ${villainType}`
       const parsed = extractJSON(raw)
 
       if (parsed) {
-        const ALLOWED       = ['summary', 'biggestMistake', 'mistakeType', 'whyWrong', 'betterLine', 'confidence']
-        const VALID_TYPES   = ['overcall', 'overbet', 'underbet', 'bad_bluff', 'wrong_fold', 'bad_sizing', 'missed_value', 'correct']
+        const VALID_MISTAKE_TYPES = ['overcall', 'overbet', 'underbet', 'bad_bluff', 'wrong_fold', 'bad_sizing', 'missed_value', 'correct']
+        const VALID_LEAK_CATS     = ['river_call_too_wide', 'turn_call_too_wide', 'overbluff', 'missed_value', 'passive_play', 'bad_preflop', 'overpair_overplay', 'top_pair_overplay', 'draw_chasing', 'no_clear_leak']
 
-        const out = {}
-        for (const k of ALLOWED) out[k] = typeof parsed[k] === 'string' ? parsed[k] : ''
-        if (!['high', 'medium', 'low'].includes(out.confidence)) out.confidence = 'medium'
-        if (!VALID_TYPES.includes(out.mistakeType))               out.mistakeType = 'other'
+        const out = {
+          summary:        typeof parsed.summary        === 'string' ? parsed.summary        : '',
+          biggestMistake: typeof parsed.biggestMistake === 'string' ? parsed.biggestMistake : '',
+          mistakeType:    VALID_MISTAKE_TYPES.includes(parsed.mistakeType) ? parsed.mistakeType : 'other',
+          leak_category:  VALID_LEAK_CATS.includes(parsed.leak_category)  ? parsed.leak_category : 'no_clear_leak',
+          ev_impact:      typeof parsed.ev_impact === 'number' ? parsed.ev_impact : 0,
+          confidence:     ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'medium',
+          whyWrong:       typeof parsed.whyWrong   === 'string' ? parsed.whyWrong   : '',
+          betterLine:     typeof parsed.betterLine  === 'string' ? parsed.betterLine  : '',
+          gameTypeUsed:   gameContext,
+          villainTypeUsed: villainType,
+        }
 
         return res.status(200).json({ type: 'analysis', analysis: out })
       }

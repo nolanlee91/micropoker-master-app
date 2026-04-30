@@ -35,8 +35,21 @@ const MISTAKE_LABELS = {
   other:        'Mistake',
 }
 
-const ANALYSIS_KEYS   = ['summary', 'biggestMistake', 'mistakeType', 'whyWrong', 'betterLine', 'confidence']
-const VALID_TYPES     = ['overcall', 'overbet', 'underbet', 'bad_bluff', 'wrong_fold', 'bad_sizing', 'missed_value', 'correct']
+const VALID_MISTAKE_TYPES = ['overcall', 'overbet', 'underbet', 'bad_bluff', 'wrong_fold', 'bad_sizing', 'missed_value', 'correct']
+const VALID_LEAK_CATS     = ['river_call_too_wide', 'turn_call_too_wide', 'overbluff', 'missed_value', 'passive_play', 'bad_preflop', 'overpair_overplay', 'top_pair_overplay', 'draw_chasing', 'no_clear_leak']
+
+const LEAK_LABELS = {
+  river_call_too_wide: 'River Call Too Wide',
+  turn_call_too_wide:  'Turn Call Too Wide',
+  overbluff:           'Overbluff',
+  missed_value:        'Missed Value',
+  passive_play:        'Passive Play',
+  bad_preflop:         'Bad Preflop',
+  overpair_overplay:   'Overpair Overplay',
+  top_pair_overplay:   'Top Pair Overplay',
+  draw_chasing:        'Draw Chasing',
+  no_clear_leak:       'No Clear Leak',
+}
 
 function parseAnalysisText(text) {
   if (!text || typeof text !== 'string') return null
@@ -51,13 +64,19 @@ function parseAnalysisText(text) {
     try {
       const p = JSON.parse(s)
       if (!p || typeof p !== 'object' || Array.isArray(p)) continue
-      // Must have at least summary or biggestMistake to be a valid analysis
       if (!p.summary && !p.biggestMistake) continue
-      const out = {}
-      for (const k of ANALYSIS_KEYS) out[k] = typeof p[k] === 'string' ? p[k] : ''
-      if (!['high', 'medium', 'low'].includes(out.confidence)) out.confidence = 'medium'
-      if (!VALID_TYPES.includes(out.mistakeType)) out.mistakeType = 'other'
-      return out
+      return {
+        summary:         typeof p.summary        === 'string' ? p.summary        : '',
+        biggestMistake:  typeof p.biggestMistake === 'string' ? p.biggestMistake : '',
+        mistakeType:     VALID_MISTAKE_TYPES.includes(p.mistakeType) ? p.mistakeType : 'other',
+        leak_category:   VALID_LEAK_CATS.includes(p.leak_category)  ? p.leak_category : 'no_clear_leak',
+        ev_impact:       typeof p.ev_impact === 'number' ? p.ev_impact : 0,
+        confidence:      ['high', 'medium', 'low'].includes(p.confidence) ? p.confidence : 'medium',
+        whyWrong:        typeof p.whyWrong   === 'string' ? p.whyWrong   : '',
+        betterLine:      typeof p.betterLine  === 'string' ? p.betterLine  : '',
+        gameTypeUsed:    typeof p.gameTypeUsed    === 'string' ? p.gameTypeUsed    : '',
+        villainTypeUsed: typeof p.villainTypeUsed === 'string' ? p.villainTypeUsed : '',
+      }
     } catch (e) {
       console.error('[coach] frontend parse attempt failed:', e.message)
     }
@@ -83,6 +102,9 @@ function AnalysisCard({ analysis }) {
   const confColor  = { high: C.primary, medium: '#FAD261', low: C.red }[conf]
   const confBg     = `rgba(${conf === 'high' ? '84,233,138' : conf === 'medium' ? '250,210,97' : '244,112,103'},0.1)`
   const label      = isCorrect ? 'Correct Play' : (MISTAKE_LABELS[analysis.mistakeType] || 'Leak Detected')
+  const ev         = typeof analysis.ev_impact === 'number' ? analysis.ev_impact : null
+  const evColor    = ev == null ? C.textMuted : ev >= 0 ? C.primary : C.red
+  const leakLabel  = analysis.leak_category ? LEAK_LABELS[analysis.leak_category] : null
 
   return (
     <div style={{ display:'flex', gap:'8px', alignItems:'flex-start', marginBottom:'12px' }}>
@@ -90,6 +112,22 @@ function AnalysisCard({ analysis }) {
         <BrainCircuit size={14} color="#071525" />
       </div>
       <div style={{ flex:1, display:'flex', flexDirection:'column', gap:'8px' }}>
+
+        {/* Context tags */}
+        {(analysis.gameTypeUsed || analysis.villainTypeUsed) && (
+          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+            {analysis.gameTypeUsed && (
+              <span style={{ fontSize:'0.58rem', fontWeight:600, color:C.secondary, background:'rgba(146,204,255,0.1)', padding:'2px 8px', borderRadius:'8px', letterSpacing:'0.05em' }}>
+                {analysis.gameTypeUsed}
+              </span>
+            )}
+            {analysis.villainTypeUsed && (
+              <span style={{ fontSize:'0.58rem', fontWeight:600, color:C.textMuted, background:C.surfaceHi, padding:'2px 8px', borderRadius:'8px', letterSpacing:'0.05em' }}>
+                vs {analysis.villainTypeUsed}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Summary */}
         {analysis.summary && (
@@ -108,6 +146,11 @@ function AnalysisCard({ analysis }) {
               <span style={{ fontSize:'0.6rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:isCorrect ? C.primary : C.red }}>
                 {label}
               </span>
+              {leakLabel && leakLabel !== 'No Clear Leak' && (
+                <span style={{ fontSize:'0.58rem', fontWeight:600, color:'#ffc0ac', background:'rgba(255,192,172,0.1)', padding:'2px 7px', borderRadius:'10px' }}>
+                  {leakLabel}
+                </span>
+              )}
               <span style={{ marginLeft:'auto', fontSize:'0.58rem', fontWeight:600, color:confColor, background:confBg, padding:'2px 7px', borderRadius:'10px' }}>
                 {conf} conf.
               </span>
@@ -137,10 +180,20 @@ function AnalysisCard({ analysis }) {
           </div>
         )}
 
+        {/* EV Impact */}
+        {ev != null && (
+          <div style={{ padding:'10px 14px', borderRadius:'10px', background: ev >= 0 ? C.primaryDim : C.redDim, border:`1px solid ${ev >= 0 ? C.primaryBorder : C.redBorder}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <span style={{ fontSize:'0.6rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted }}>Estimated EV Impact</span>
+            <span style={{ fontSize:'0.95rem', fontWeight:800, color:evColor, letterSpacing:'-0.02em' }}>
+              {ev >= 0 ? '+' : ''}{ev < 0 ? `-$${Math.abs(ev)}` : `$${ev}`}
+            </span>
+          </div>
+        )}
+
         {/* Better Line */}
         {analysis.betterLine && analysis.betterLine !== 'Continue as played' && (
           <div style={{ padding:'10px 14px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}` }}>
-            <div style={{ fontSize:'0.58rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.primary, marginBottom:'4px' }}>💡 Better Line</div>
+            <div style={{ fontSize:'0.58rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.primary, marginBottom:'4px' }}>Better Line</div>
             <div style={{ fontSize:'0.875rem', color:C.text, lineHeight:1.6, fontWeight:600 }}>{analysis.betterLine}</div>
           </div>
         )}
@@ -207,7 +260,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     if (preloadedHand) {
       setLoadedHand(preloadedHand)
       onHandConsumed?.()
-      const prompt = `Game type: ${gameType}. Analyze this hand: Position=${preloadedHand.position}, Street=${preloadedHand.street}, Hole cards=${preloadedHand.holeCards.join(' ')}, Board=${preloadedHand.boardCards?.join(' ')||'none'}, Result=${preloadedHand.result}BB.${preloadedHand.notes?' Notes: '+preloadedHand.notes:''}`
+      const prompt = `Game type: ${gameType}. Villain type: ${playerType}. Analyze this hand: Position=${preloadedHand.position}, Street=${preloadedHand.street}, Hole cards=${preloadedHand.holeCards.join(' ')}, Board=${preloadedHand.boardCards?.join(' ')||'none'}, Result=${preloadedHand.result}BB.${preloadedHand.notes?' Notes: '+preloadedHand.notes:''}`
       sendMessage(prompt, true)
     }
   }, [preloadedHand])
@@ -243,8 +296,8 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           updateHand(loadedHand.id, {
             ...loadedHand,
             aiAnalysis:   data.analysis,
-            leakCategory: data.analysis.mistakeType || null,
-            evImpact:     loadedHand.result ?? 0,
+            leakCategory: data.analysis.leak_category || null,
+            evImpact:     typeof data.analysis.ev_impact === 'number' ? data.analysis.ev_impact : null,
           }).catch(() => {})
         }
       } else {
@@ -260,8 +313,8 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
               updateHand(loadedHand.id, {
                 ...loadedHand,
                 aiAnalysis:   recovered,
-                leakCategory: recovered.mistakeType || null,
-                evImpact:     loadedHand.result ?? 0,
+                leakCategory: recovered.leak_category || null,
+                evImpact:     typeof recovered.ev_impact === 'number' ? recovered.ev_impact : null,
               }).catch(() => {})
             }
             return

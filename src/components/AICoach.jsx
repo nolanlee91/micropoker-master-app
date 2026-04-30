@@ -51,6 +51,21 @@ const LEAK_LABELS = {
   no_clear_leak:       'No Clear Leak',
 }
 
+// Read a preference stored by useLocalStorage (JSON-serialised)
+function getPref(key, fallback) {
+  try {
+    const v = window.localStorage.getItem(key)
+    return v != null ? JSON.parse(v) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function fmtResult(val) {
+  if (val === 0 || val == null) return null
+  return val > 0 ? `+$${val}` : `-$${Math.abs(val)}`
+}
+
 function parseAnalysisText(text) {
   if (!text || typeof text !== 'string') return null
   const attempts = [
@@ -185,7 +200,7 @@ function AnalysisCard({ analysis }) {
           <div style={{ padding:'10px 14px', borderRadius:'10px', background: ev >= 0 ? C.primaryDim : C.redDim, border:`1px solid ${ev >= 0 ? C.primaryBorder : C.redBorder}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <span style={{ fontSize:'0.6rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted }}>Estimated EV Impact</span>
             <span style={{ fontSize:'0.95rem', fontWeight:800, color:evColor, letterSpacing:'-0.02em' }}>
-              {ev >= 0 ? '+' : ''}{ev < 0 ? `-$${Math.abs(ev)}` : `$${ev}`}
+              {ev >= 0 ? `+$${ev}` : `-$${Math.abs(ev)}`}
             </span>
           </div>
         )}
@@ -212,12 +227,10 @@ function Bubble({ msg }) {
 
   let content = msg.content || ''
 
-  // Last-resort: if assistant message looks like JSON, try to render as analysis card
   if (!isUser && content.trimStart().startsWith('{')) {
     console.warn('[coach] Bubble received JSON-like content, attempting recovery')
     const recovered = parseAnalysisText(content)
     if (recovered) return <AnalysisCard analysis={recovered} />
-    // Could not parse — replace raw JSON with safe fallback text
     content = 'Analysis complete. Please try again for structured output.'
   }
 
@@ -243,26 +256,25 @@ function Bubble({ msg }) {
 
 export default function AICoach({ preloadedHand, onHandConsumed }) {
   const { updateHand } = useData()
-  const [messages,   setMessages]  = useLocalStorage('aicoach-messages', [])
-  const [input,      setInput]     = useState('')
-  const [gameType,   setGameType]  = useState('Live Cash')
-  const [playerType, setPlayerType]= useState('Unknown')
-  const [language,   setLanguage]  = useLocalStorage('aicoach-language', 'English')
-  const [loading,    setLoading]   = useState(false)
-  const [loadedHand, setLoadedHand]= useState(null)
-  const [error,      setError]     = useState('')
+  const [messages,    setMessages]   = useLocalStorage('aicoach-messages', [])
+  const [input,       setInput]      = useState('')
+  const [playerType,  setPlayerType] = useState('Unknown')
+  const [extraNotes,  setExtraNotes] = useState('')
+  const [loading,     setLoading]    = useState(false)
+  const [loadedHand,  setLoadedHand] = useState(null)
+  const [error,       setError]      = useState('')
   const bottomRef = useRef(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior:'smooth' })
   }, [messages, loading])
 
+  // Preload hand without auto-analyzing — user must click Analyze
   useEffect(() => {
     if (preloadedHand) {
       setLoadedHand(preloadedHand)
+      setExtraNotes('')
       onHandConsumed?.()
-      const prompt = `Game type: ${gameType}. Villain type: ${playerType}. Analyze this hand: Position=${preloadedHand.position}, Street=${preloadedHand.street}, Hole cards=${preloadedHand.holeCards.join(' ')}, Board=${preloadedHand.boardCards?.join(' ')||'none'}, Result=${preloadedHand.result}BB.${preloadedHand.notes?' Notes: '+preloadedHand.notes:''}`
-      sendMessage(prompt, true)
     }
   }, [preloadedHand])
 
@@ -270,6 +282,10 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     const content = (text || input).trim()
     if (!content || loading) return
     setError('')
+
+    // Read preferences at call time so they're always current
+    const gameType = getPref('user-default-game-type', 'Live Cash')
+    const language = getPref('aicoach-language', 'English')
 
     const userMsg = { role:'user', content }
     const newMessages = [...messages, userMsg]
@@ -305,7 +321,6 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
       } else {
         const replyText = data.reply || 'No response.'
 
-        // Frontend safety net: backend fell back to reply but text may still contain JSON
         if (isHandAnalysis) {
           const recovered = parseAnalysisText(replyText)
           if (recovered) {
@@ -321,7 +336,6 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
             }
             return
           }
-          // If reply looks like raw JSON but couldn't be parsed, show safe message
           if (replyText.trimStart().startsWith('{')) {
             console.error('[coach] Reply looks like JSON but failed to parse:', replyText.slice(0, 200))
             setMessages(prev => [...prev, { role:'assistant', type:'reply', content:'Analysis received but could not be displayed. Please try again.' }])
@@ -336,11 +350,33 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     } finally {
       setLoading(false)
     }
-  }, [input, loading, messages])
+  }, [input, loading, messages, playerType, loadedHand])
+
+  // Build prompt from preloaded hand and trigger analysis
+  const handleAnalyzeHand = useCallback(() => {
+    if (!loadedHand || loading) return
+    const h = loadedHand
+    const resultStr = fmtResult(h.result)
+    const boardStr  = h.boardCards?.length ? h.boardCards.join(' ') : 'none'
+    const noteParts = [h.notes, extraNotes.trim()].filter(Boolean).join(' | ')
+    const prompt = [
+      `Analyze this hand:`,
+      `Position=${h.position}`,
+      `Street=${h.street}`,
+      `Hole cards=${h.holeCards.join(' ')}`,
+      `Board=${boardStr}`,
+      resultStr ? `Result=${resultStr}` : null,
+      noteParts ? `Notes: ${noteParts}` : null,
+    ].filter(Boolean).join(', ')
+
+    sendMessage(prompt, true)
+  }, [loadedHand, extraNotes, loading, sendMessage])
 
   const handleKey = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
+
+  const resultStr = loadedHand ? fmtResult(loadedHand.result) : null
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100%', background:C.bg, fontFamily:"'Inter',sans-serif" }}>
@@ -356,33 +392,90 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
             <div style={{ fontSize:'0.62rem', color:C.textMuted }}>Powered by Gemini · GTO-aware</div>
           </div>
         </div>
-        <button onClick={() => { setMessages([]); setError(''); setLoadedHand(null) }}
+        <button onClick={() => { setMessages([]); setError(''); setLoadedHand(null); setExtraNotes('') }}
           style={{ width:'36px', height:'36px', borderRadius:'8px', border:'none', background:C.surfaceHi, color:C.textMuted, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
           <RefreshCw size={14} />
         </button>
       </div>
 
-      {/* Loaded hand pill */}
+      {/* Preloaded hand card */}
       {loadedHand && (
-        <div style={{ margin:'10px 16px 0', padding:'10px 14px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}`, display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap', flexShrink:0 }}>
-          <div style={{ display:'flex', gap:'4px' }}>
-            {loadedHand.holeCards.map(c => <MiniCard key={c} card={c} />)}
-          </div>
-          <div style={{ fontSize:'0.72rem', color:C.primary, flex:1 }}>
-            {loadedHand.position} · {loadedHand.street}
-            {loadedHand.result !== 0 && (
-              <span style={{ marginLeft:'8px', color:loadedHand.result>0?C.primary:C.red }}>
-                {loadedHand.result>0?'+':''}{loadedHand.result}BB
+        <div style={{ margin:'10px 16px 0', padding:'14px', borderRadius:'12px', background:C.surface, border:`1px solid ${C.primaryBorder}`, flexShrink:0, display:'flex', flexDirection:'column', gap:'10px' }}>
+          {/* Hand summary row */}
+          <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
+            <span style={{ fontSize:'0.58rem', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:C.primary, background:C.primaryDim, padding:'2px 8px', borderRadius:'6px' }}>
+              {loadedHand.position}
+            </span>
+            <div style={{ display:'flex', gap:'3px' }}>
+              {loadedHand.holeCards.map(c => <MiniCard key={c} card={c} />)}
+            </div>
+            {loadedHand.boardCards?.length > 0 && (
+              <>
+                <span style={{ fontSize:'0.58rem', color:C.textMuted }}>|</span>
+                <div style={{ display:'flex', gap:'2px' }}>
+                  {loadedHand.boardCards.map(c => <MiniCard key={c} card={c} />)}
+                </div>
+              </>
+            )}
+            <span style={{ fontSize:'0.6rem', color:C.textMuted }}>{loadedHand.street}</span>
+            {resultStr && (
+              <span style={{ fontSize:'0.9rem', fontWeight:700, letterSpacing:'-0.02em', color:loadedHand.result > 0 ? C.primary : C.red, fontVariantNumeric:'tabular-nums' }}>
+                {resultStr}
               </span>
             )}
+            <button onClick={() => { setLoadedHand(null); setExtraNotes('') }}
+              style={{ marginLeft:'auto', background:'none', border:'none', color:C.textMuted, cursor:'pointer', fontSize:'0.7rem', padding:'2px 6px', borderRadius:'4px' }}>✕</button>
           </div>
-          <button onClick={() => setLoadedHand(null)} style={{ background:'none', border:'none', color:C.textMuted, cursor:'pointer', fontSize:'0.7rem', padding:'2px 6px' }}>✕</button>
+
+          {/* Existing notes */}
+          {loadedHand.notes && (
+            <div style={{ fontSize:'0.72rem', color:C.textMuted, lineHeight:1.5, padding:'8px 10px', background:C.surfaceHi, borderRadius:'6px' }}>
+              {loadedHand.notes}
+            </div>
+          )}
+
+          {/* Extra notes */}
+          <textarea
+            value={extraNotes}
+            onChange={e => setExtraNotes(e.target.value)}
+            placeholder="Add context before analyzing... (villain read, sizing details, stack depth)"
+            rows={2}
+            style={{ padding:'8px 10px', background:C.surfaceHigh, border:`1px solid ${C.border}`, borderRadius:'8px', color:C.text, fontSize:'0.78rem', resize:'none', outline:'none', fontFamily:"'Inter',sans-serif", lineHeight:1.5, colorScheme:'dark' }}
+          />
+
+          {/* Villain selector + Analyze button */}
+          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', alignItems:'center' }}>
+            {['Unknown', 'Nit', 'TAG', 'LAG', 'Fish', 'Rec'].map(type => (
+              <button key={type} onClick={() => setPlayerType(type)} style={{
+                padding:'5px 10px', borderRadius:'8px',
+                border:`1px solid ${playerType===type ? C.secondary : C.border}`,
+                background: playerType===type ? 'rgba(146,204,255,0.1)' : 'transparent',
+                color: playerType===type ? C.secondary : C.textMuted,
+                fontSize:'0.62rem', fontWeight:600, cursor:'pointer', transition:'all 0.15s',
+              }}>{type}</button>
+            ))}
+            <button
+              onClick={handleAnalyzeHand}
+              disabled={loading}
+              style={{
+                marginLeft:'auto', padding:'8px 18px', borderRadius:'8px', border:'none',
+                background: loading ? C.surfaceHigh : 'linear-gradient(135deg,#aadaff,#92ccff,#5aabf5)',
+                color: loading ? C.textMuted : '#071525',
+                fontSize:'0.72rem', fontWeight:700, cursor: loading ? 'not-allowed' : 'pointer',
+                display:'flex', alignItems:'center', gap:'6px', transition:'all 0.15s',
+                boxShadow: loading ? 'none' : '0 0 14px rgba(146,204,255,0.25)',
+              }}
+            >
+              <BrainCircuit size={13} />
+              {loading ? 'Analyzing…' : 'Analyze Hand'}
+            </button>
+          </div>
         </div>
       )}
 
       {/* Messages */}
       <div style={{ flex:1, overflowY:'auto', padding:'16px', display:'flex', flexDirection:'column' }}>
-        {messages.length === 0 && (
+        {messages.length === 0 && !loadedHand && (
           <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'10px', opacity:0.25 }}>
             <BrainCircuit size={44} color={C.secondary} />
             <div style={{ fontSize:'0.75rem', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:C.text, textAlign:'center' }}>Ask anything about your hand</div>
@@ -415,48 +508,29 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
         </div>
       )}
 
-      {/* Input */}
+      {/* Free-text input — always available for follow-up chat */}
       <div style={{ padding:'12px 16px', background:C.surface, borderTop:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:'8px', flexShrink:0 }}>
-        {/* Game Type selector */}
-        <div style={{ display:'flex', gap:'6px' }}>
-          {['Live Cash', 'Online Cash', 'MTT'].map(type => (
-            <button key={type} onClick={() => setGameType(type)} style={{
-              flex:1, padding:'6px 8px', borderRadius:'8px', border:`1px solid ${gameType===type ? C.primary : C.border}`,
-              background: gameType===type ? C.primaryDim : 'transparent',
-              color: gameType===type ? C.primary : C.textMuted,
-              fontSize:'0.65rem', fontWeight:600, cursor:'pointer', transition:'all 0.15s',
-            }}>{type}</button>
-          ))}
-        </div>
-        {/* Player Type selector */}
-        <div style={{ display:'flex', gap:'6px' }}>
-          {['Unknown', 'Nit', 'TAG', 'LAG', 'Fish', 'Rec'].map(type => (
-            <button key={type} onClick={() => setPlayerType(type)} style={{
-              flex:1, padding:'5px 4px', borderRadius:'8px', border:`1px solid ${playerType===type ? C.secondary : C.border}`,
-              background: playerType===type ? 'rgba(146,204,255,0.1)' : 'transparent',
-              color: playerType===type ? C.secondary : C.textMuted,
-              fontSize:'0.6rem', fontWeight:600, cursor:'pointer', transition:'all 0.15s',
-            }}>{type}</button>
-          ))}
-        </div>
-        {/* Language selector */}
-        <div style={{ display:'flex', gap:'6px', alignItems:'center' }}>
-          <span style={{ fontSize:'0.58rem', fontWeight:600, color:C.textMuted, letterSpacing:'0.06em', textTransform:'uppercase', whiteSpace:'nowrap' }}>Lang</span>
-          {['English', 'Vietnamese', 'Chinese'].map(lang => (
-            <button key={lang} onClick={() => setLanguage(lang)} style={{
-              flex:1, padding:'5px 4px', borderRadius:'8px', border:`1px solid ${language===lang ? '#ffc0ac' : C.border}`,
-              background: language===lang ? 'rgba(255,192,172,0.1)' : 'transparent',
-              color: language===lang ? '#ffc0ac' : C.textMuted,
-              fontSize:'0.6rem', fontWeight:600, cursor:'pointer', transition:'all 0.15s',
-            }}>{lang}</button>
-          ))}
-        </div>
+        {/* Villain selector — only when no preloaded hand (hand card has its own) */}
+        {!loadedHand && (
+          <div style={{ display:'flex', gap:'6px' }}>
+            {['Unknown', 'Nit', 'TAG', 'LAG', 'Fish', 'Rec'].map(type => (
+              <button key={type} onClick={() => setPlayerType(type)} style={{
+                flex:1, padding:'5px 4px', borderRadius:'8px',
+                border:`1px solid ${playerType===type ? C.secondary : C.border}`,
+                background: playerType===type ? 'rgba(146,204,255,0.1)' : 'transparent',
+                color: playerType===type ? C.secondary : C.textMuted,
+                fontSize:'0.6rem', fontWeight:600, cursor:'pointer', transition:'all 0.15s',
+              }}>{type}</button>
+            ))}
+          </div>
+        )}
+
         <div style={{ display:'flex', gap:'8px', alignItems:'flex-end' }}>
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKey}
-            placeholder="Describe your hand... (Enter to send)"
+            placeholder={loadedHand ? 'Ask a follow-up question…' : 'Describe your hand… (Enter to send)'}
             rows={2}
             style={{ flex:1, padding:'10px 12px', background:C.surfaceHigh, border:`1px solid ${C.border}`, borderRadius:'10px', color:C.text, fontSize:'0.875rem', resize:'none', outline:'none', fontFamily:"'Inter',sans-serif", lineHeight:1.6, colorScheme:'dark' }}
           />

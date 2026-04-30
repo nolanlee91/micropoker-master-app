@@ -102,12 +102,30 @@ export default async function handler(req, res) {
   }
 
   // ── System prompts ────────────────────────────────────────────────────────
-  const analysisSystemText = `You are a sharp poker coach. Analyze the hand.
+  const analysisSystemText = `You are a sharp poker coach. Before analyzing, reason through the hand in this exact order:
+
+STEP 1 — HAND PARSING
+- List hole cards and board cards exactly as given.
+
+STEP 2 — HAND STRENGTH (deterministic — no guessing)
+- Determine the best 5-card hand the hero can make.
+- Classify EXACTLY as one of: high card / pair / two pair / trips / straight / flush / full house / quads / straight flush.
+- DO NOT assume straight or flush unless the cards explicitly form one. Count the cards.
+- DO NOT invent any opponent's hand.
+
+STEP 3 — BOARD TEXTURE
+- Note if board is: paired / flush draw possible / straight draw possible / dry / wet.
+
+STEP 4 — DECISION ANALYSIS
+- Only now analyze the action and give your verdict.
+- If action line is missing or unclear, say "limited context" in summary.
 
 CRITICAL: Return ONLY a JSON object. No text before or after it. No markdown. No code fences. No backticks.
 
 Required format:
 {
+  "heroHandStrength": "exact classification, e.g. top pair top kicker, second pair, flush draw, etc.",
+  "boardTexture": "brief board description, e.g. paired wet board, rainbow dry board",
   "summary": "One blunt verdict sentence",
   "biggestMistake": "The main error in one direct sentence",
   "mistakeType": "overcall OR overbet OR underbet OR bad_bluff OR wrong_fold OR bad_sizing OR missed_value OR correct",
@@ -189,16 +207,18 @@ Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
         const VALID_LEAK_CATS     = ['river_call_too_wide', 'turn_call_too_wide', 'overbluff', 'missed_value', 'passive_play', 'bad_preflop', 'overpair_overplay', 'top_pair_overplay', 'draw_chasing', 'no_clear_leak']
 
         const out = {
-          summary:        typeof parsed.summary        === 'string' ? parsed.summary        : '',
-          biggestMistake: typeof parsed.biggestMistake === 'string' ? parsed.biggestMistake : '',
-          mistakeType:    VALID_MISTAKE_TYPES.includes(parsed.mistakeType) ? parsed.mistakeType : 'other',
-          leak_category:  VALID_LEAK_CATS.includes(parsed.leak_category)  ? parsed.leak_category : 'no_clear_leak',
-          ev_impact:      typeof parsed.ev_impact === 'number' ? parsed.ev_impact : 0,
-          confidence:     ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'medium',
-          whyWrong:       typeof parsed.whyWrong   === 'string' ? parsed.whyWrong   : '',
-          betterLine:     typeof parsed.betterLine  === 'string' ? parsed.betterLine  : '',
-          gameTypeUsed:   gameContext,
-          villainTypeUsed: villainType,
+          heroHandStrength: typeof parsed.heroHandStrength === 'string' ? parsed.heroHandStrength : '',
+          boardTexture:     typeof parsed.boardTexture     === 'string' ? parsed.boardTexture     : '',
+          summary:          typeof parsed.summary          === 'string' ? parsed.summary          : '',
+          biggestMistake:   typeof parsed.biggestMistake   === 'string' ? parsed.biggestMistake   : '',
+          mistakeType:      VALID_MISTAKE_TYPES.includes(parsed.mistakeType) ? parsed.mistakeType : 'other',
+          leak_category:    VALID_LEAK_CATS.includes(parsed.leak_category)  ? parsed.leak_category : 'no_clear_leak',
+          ev_impact:        typeof parsed.ev_impact === 'number' ? parsed.ev_impact : 0,
+          confidence:       ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'medium',
+          whyWrong:         typeof parsed.whyWrong   === 'string' ? parsed.whyWrong   : '',
+          betterLine:       typeof parsed.betterLine  === 'string' ? parsed.betterLine  : '',
+          gameTypeUsed:     gameContext,
+          villainTypeUsed:  villainType,
         }
 
         return res.status(200).json({ type: 'analysis', analysis: out })

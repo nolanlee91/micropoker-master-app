@@ -93,16 +93,18 @@ function parseAnalysisText(text) {
                     : typeof p.answer  === 'string' ? p.answer : ''
 
       return {
+        heroHandStrength: typeof p.heroHandStrength === 'string' ? p.heroHandStrength : '',
+        boardTexture:     typeof p.boardTexture     === 'string' ? p.boardTexture     : '',
         summary,
-        biggestMistake:  typeof p.biggestMistake === 'string' ? p.biggestMistake : '',
-        mistakeType:     VALID_MISTAKE_TYPES.includes(p.mistakeType) ? p.mistakeType : 'other',
-        leak_category:   VALID_LEAK_CATS.includes(p.leak_category)  ? p.leak_category : 'no_clear_leak',
-        ev_impact:       typeof p.ev_impact === 'number' ? p.ev_impact : 0,
-        confidence:      ['high', 'medium', 'low'].includes(p.confidence) ? p.confidence : 'medium',
-        whyWrong:        typeof p.whyWrong   === 'string' ? p.whyWrong   : '',
-        betterLine:      typeof p.betterLine  === 'string' ? p.betterLine  : '',
-        gameTypeUsed:    typeof p.gameTypeUsed    === 'string' ? p.gameTypeUsed    : '',
-        villainTypeUsed: typeof p.villainTypeUsed === 'string' ? p.villainTypeUsed : '',
+        biggestMistake:   typeof p.biggestMistake === 'string' ? p.biggestMistake : '',
+        mistakeType:      VALID_MISTAKE_TYPES.includes(p.mistakeType) ? p.mistakeType : 'other',
+        leak_category:    VALID_LEAK_CATS.includes(p.leak_category)  ? p.leak_category : 'no_clear_leak',
+        ev_impact:        typeof p.ev_impact === 'number' ? p.ev_impact : 0,
+        confidence:       ['high', 'medium', 'low'].includes(p.confidence) ? p.confidence : 'medium',
+        whyWrong:         typeof p.whyWrong   === 'string' ? p.whyWrong   : '',
+        betterLine:       typeof p.betterLine  === 'string' ? p.betterLine  : '',
+        gameTypeUsed:     typeof p.gameTypeUsed    === 'string' ? p.gameTypeUsed    : '',
+        villainTypeUsed:  typeof p.villainTypeUsed === 'string' ? p.villainTypeUsed : '',
       }
     } catch (e) {
       console.error('[coach] frontend parse attempt failed:', e.message)
@@ -151,6 +153,22 @@ function AnalysisCard({ analysis }) {
             {analysis.villainTypeUsed && (
               <span style={{ fontSize:'0.58rem', fontWeight:600, color:C.textMuted, background:C.surfaceHi, padding:'2px 8px', borderRadius:'8px', letterSpacing:'0.05em' }}>
                 vs {analysis.villainTypeUsed}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Hand strength + board texture */}
+        {(analysis.heroHandStrength || analysis.boardTexture) && (
+          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+            {analysis.heroHandStrength && (
+              <span style={{ fontSize:'0.6rem', fontWeight:600, color:'#ffc0ac', background:'rgba(255,192,172,0.08)', padding:'3px 9px', borderRadius:'8px', letterSpacing:'0.03em' }}>
+                {analysis.heroHandStrength}
+              </span>
+            )}
+            {analysis.boardTexture && (
+              <span style={{ fontSize:'0.6rem', fontWeight:600, color:C.textMuted, background:C.surfaceHi, padding:'3px 9px', borderRadius:'8px', letterSpacing:'0.03em' }}>
+                {analysis.boardTexture}
               </span>
             )}
           </div>

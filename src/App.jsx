@@ -1,6 +1,9 @@
 import React, { useState } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
+import { PrivacyPolicy, Support } from './components/Legal'
+import Onboarding from './components/Onboarding'
+import { useLocalStorage } from './hooks/useLocalStorage'
 import HandHistory from './components/HandHistory'
 import AICoach from './components/AICoach'
 import OddsCalculator from './components/OddsCalculator'
@@ -13,9 +16,16 @@ import { DataProvider, useData } from './context/DataContext'
 
 export default function App() {
   const { session, showMigrate } = useAuth()
+  const { pathname } = useLocation()
+  const [onboarded, setOnboarded] = useLocalStorage('onboarding-done-v1', false)
+
+  // Public legal/support pages — must be reachable without auth (store requirement)
+  if (pathname === '/privacy') return <PrivacyPolicy />
+  if (pathname === '/support') return <Support />
 
   if (session === undefined) return <Spinner />
   if (!session) return <LoginScreen />
+  if (!onboarded) return <Onboarding onDone={() => setOnboarded(true)} />
 
   return (
     <DataProvider>

@@ -31,6 +31,24 @@ function getDisplayName(session) {
 }
 
 function SettingsPanel({ onClose, panelRef, defaultGameType, setDefaultGameType, language, setLanguage }) {
+  const { deleteAccount } = useAuth()
+  const [soundEnabled, setSoundEnabled] = useLocalStorage('sound-enabled', true)
+  const [confirming, setConfirming] = useState(false)
+  const [deleting,   setDeleting]   = useState(false)
+  const [delError,   setDelError]   = useState('')
+
+  async function handleDelete() {
+    setDeleting(true)
+    setDelError('')
+    const err = await deleteAccount()
+    if (err) {
+      setDelError(err.message || 'Could not delete account')
+      setDeleting(false)
+      setConfirming(false)
+    }
+    // On success the auth state changes and the whole app unmounts to the login screen.
+  }
+
   const lbl = txt => (
     <div style={{ fontSize:'0.52rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'8px' }}>{txt}</div>
   )
@@ -69,6 +87,56 @@ function SettingsPanel({ onClose, panelRef, defaultGameType, setDefaultGameType,
         <div style={{ display:'flex', gap:'5px' }}>
           {LANGUAGES.map(v => btn(v, language, setLanguage, '#ffc0ac'))}
         </div>
+      </div>
+
+      <div style={{ marginTop:'14px' }}>
+        {lbl('Sound effects')}
+        <div style={{ display:'flex', gap:'5px' }}>
+          {btn('On',  soundEnabled ? 'On' : 'Off', () => setSoundEnabled(true),  C.primary)}
+          {btn('Off', soundEnabled ? 'On' : 'Off', () => setSoundEnabled(false), C.primary)}
+        </div>
+      </div>
+
+      {/* Account — delete (App Store requirement) */}
+      <div style={{ marginTop:'16px', paddingTop:'14px', borderTop:`1px solid ${C.border}` }}>
+        {lbl('Account')}
+        {!confirming ? (
+          <button
+            onClick={() => { setConfirming(true); setDelError('') }}
+            style={{
+              width:'100%', padding:'8px', borderRadius:'8px',
+              border:'1px solid rgba(244,112,103,0.3)', background:'transparent',
+              color:'#f47067', fontSize:'0.66rem', fontWeight:600, cursor:'pointer',
+            }}
+          >
+            Delete account
+          </button>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+            <div style={{ fontSize:'0.62rem', color:C.textMuted, lineHeight:1.5 }}>
+              This permanently deletes your account and all hands, sessions and data. This cannot be undone.
+            </div>
+            <div style={{ display:'flex', gap:'6px' }}>
+              <button
+                onClick={() => setConfirming(false)}
+                disabled={deleting}
+                style={{ flex:1, padding:'8px', borderRadius:'8px', border:'none', background:C.surfaceHigh, color:C.textMuted, fontSize:'0.66rem', fontWeight:600, cursor:'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                style={{ flex:1, padding:'8px', borderRadius:'8px', border:'none', background:'#f47067', color:'#1a0a08', fontSize:'0.66rem', fontWeight:700, cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.6 : 1 }}
+              >
+                {deleting ? 'Deleting…' : 'Delete everything'}
+              </button>
+            </div>
+          </div>
+        )}
+        {delError && (
+          <div style={{ fontSize:'0.6rem', color:'#f47067', marginTop:'6px' }}>{delError}</div>
+        )}
       </div>
     </div>
   )

@@ -4,6 +4,8 @@ import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useData } from '../context/DataContext'
 import { evaluateHeroHand } from '../utils/handEvaluator'
 import { supabase } from '../lib/supabase'
+import { usePro } from '../hooks/usePro'
+import Paywall from './Paywall'
 
 const C = {
   bg:          '#0B0E14',
@@ -333,6 +335,8 @@ function Bubble({ msg }) {
 
 export default function AICoach({ preloadedHand, onHandConsumed }) {
   const { updateHand } = useData()
+  const { isPro, setIsPro } = usePro()
+  const [showPaywall, setShowPaywall] = useState(false)
   const [messages,    setMessages]   = useLocalStorage('aicoach-messages', [])
   const [input,       setInput]      = useState('')
   const [playerType,  setPlayerType] = useState('Unknown')
@@ -362,6 +366,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   const sendMessage = useCallback(async (text, isHandAnalysis = false, handEval = null) => {
     const content = (text || input).trim()
     if (!content || loading) return
+    if (!isPro) { setShowPaywall(true); return }
     setError('')
 
     // Read preferences at call time so they're always current
@@ -504,12 +509,13 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     } finally {
       setLoading(false)
     }
-  }, [input, loading, messages, playerType])
+  }, [input, loading, messages, playerType, isPro])
 
   // Build prompt from preloaded hand and trigger analysis
   const handleAnalyzeHand = useCallback(() => {
     const hand = loadedHand   // explicit capture at click time
     if (!hand || loading) return
+    if (!isPro) { setShowPaywall(true); return }
 
     // Deterministic hand evaluation — before calling AI
     const handEval = evaluateHeroHand(hand.holeCards, hand.boardCards)
@@ -533,7 +539,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
 
     console.log('[coach] Prompt:', prompt)
     sendMessage(prompt, true, handEval)
-  }, [loadedHand, extraNotes, loading, playerType, sendMessage])
+  }, [loadedHand, extraNotes, loading, playerType, sendMessage, isPro])
 
   const handleKey = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
@@ -712,6 +718,14 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           </button>
         </div>
       </div>
+
+      {showPaywall && (
+        <Paywall
+          onClose={() => setShowPaywall(false)}
+          // TODO: replace with real in-app purchase before store launch
+          onUpgrade={() => { setIsPro(true); setShowPaywall(false) }}
+        />
+      )}
 
       <style>{`@keyframes pulse { 0%,80%,100%{transform:scale(0.5);opacity:0.3} 40%{transform:scale(1);opacity:1} }`}</style>
     </div>

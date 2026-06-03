@@ -121,6 +121,18 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut()
   }
 
+  // Permanently delete the account + all cloud data (App Store requirement).
+  // The RPC deletes auth.users → cascades to profiles/sessions/hand_history.
+  async function deleteAccount() {
+    const { error } = await supabase.rpc('delete_current_user')
+    if (error) return error
+    MIGRATE_KEYS.forEach(k => localStorage.removeItem(k))
+    localStorage.removeItem('aicoach-messages')
+    localStorage.removeItem(MIGRATION_FLAG)
+    await supabase.auth.signOut()
+    return null
+  }
+
   return (
     <AuthContext.Provider value={{
       session,
@@ -130,6 +142,7 @@ export function AuthProvider({ children }) {
       signInWithGoogle,
       signInWithEmail,
       signOut,
+      deleteAccount,
     }}>
       {children}
     </AuthContext.Provider>

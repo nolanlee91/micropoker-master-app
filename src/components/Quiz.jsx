@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Flame, Clock, CheckCircle, XCircle, Trophy, ArrowLeft, Lock, RotateCcw, ChevronRight } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
+import { celebrate, feedbackWrong } from '../utils/feedback'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -795,6 +796,9 @@ function QuizSession({ onBack, consume }) {
     const ok = val === q.answer
     const newScore  = score + (ok ? 1 : 0)
     const newStreak = ok ? streak + 1 : 0
+    // Core-loop reward: confetti only on a hot streak so it stays special
+    if (ok) celebrate({ confetti: newStreak >= 3 })
+    else feedbackWrong()
     consume(tier, ok, newScore)
     setScore(newScore)
     setStreak(newStreak)

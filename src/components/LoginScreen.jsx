@@ -179,6 +179,23 @@ export default function LoginScreen() {
             </form>
           )}
         </div>
+
+        {/* Footer: educational disclaimer + legal links */}
+        <div style={{ textAlign: 'center' }}>
+          <p style={{
+            ...theme.typography.body,
+            color: theme.colors.onSurfaceVariant,
+            fontSize: '0.7rem',
+            lineHeight: 1.5,
+            margin: '0 0 8px',
+          }}>
+            An educational poker training &amp; tracking tool — no real-money gambling.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '14px' }}>
+            <a href="/privacy" style={{ color: theme.colors.onSurfaceVariant, fontSize: '0.7rem', textDecoration: 'none' }}>Privacy</a>
+            <a href="/support" style={{ color: theme.colors.onSurfaceVariant, fontSize: '0.7rem', textDecoration: 'none' }}>Support</a>
+          </div>
+        </div>
       </div>
     </div>
   )

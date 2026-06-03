@@ -3,6 +3,7 @@ import { BrainCircuit, Send, RefreshCw, AlertCircle, CheckCircle, ChevronDown, C
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useData } from '../context/DataContext'
 import { evaluateHeroHand } from '../utils/handEvaluator'
+import { supabase } from '../lib/supabase'
 
 const C = {
   bg:          '#0B0E14',
@@ -401,9 +402,13 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     console.log('[coach] sending:', isHandAnalysis ? 'analysis' : 'follow_up', '|', content.slice(0, 80))
 
     try {
+      const { data: { session: authSession } } = await supabase.auth.getSession()
+      const headers = { 'Content-Type':'application/json' }
+      if (authSession?.access_token) headers.Authorization = `Bearer ${authSession.access_token}`
+
       const res = await fetch('/api/coach', {
         method: 'POST',
-        headers: { 'Content-Type':'application/json' },
+        headers,
         body: JSON.stringify(payload),
       })
       const data = await res.json()
@@ -520,6 +525,8 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
       `Street=${hand.street}`,
       `Hole cards=${hand.holeCards.join(' ')}`,
       `Board=${boardStr}`,
+      hand.action ? `Action=${hand.action}` : null,
+      hand.potSize != null ? `Pot=$${hand.potSize}` : null,
       resultStr ? `Result=${resultStr}` : null,
       noteParts ? `Notes: ${noteParts}` : null,
     ].filter(Boolean).join(', ')

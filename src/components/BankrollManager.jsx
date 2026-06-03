@@ -196,7 +196,7 @@ function LinkHandsPanel({ session, allHands, onLink, onClose }) {
                 <span style={{ fontSize:'0.65rem', fontWeight:600, color:C.primary }}>{h.position}</span>
                 <div style={{ display:'flex', gap:'2px' }}>{h.holeCards.map(c => <TinyCard key={c} card={c}/>)}</div>
                 <span style={{ fontSize:'0.65rem', color:h.result>0?C.primary:h.result<0?C.red:C.textMuted, fontWeight:600, marginLeft:'auto' }}>
-                  {h.result>0?'+':''}{h.result}bb
+                  {h.result>=0?'+':'-'}${Math.abs(h.result)}
                 </span>
               </div>
             )
@@ -291,7 +291,7 @@ function SessionCard({ session, allHands, onDelete, onLink, onEdit, onEditHand }
                 <div style={{ display:'flex', gap:'2px' }}>{h.holeCards.map(c => <TinyCard key={c} card={c}/>)}</div>
                 <span style={{ fontSize:'0.58rem', color:C.textMuted }}>{h.street}</span>
                 <span style={{ fontSize:'0.68rem', color:h.result>0?C.primary:h.result<0?C.red:C.textMuted, fontWeight:600, marginLeft:'auto' }}>
-                  {h.result>0?'+':''}${Math.abs(h.result)}
+                  {h.result>=0?'+':'-'}${Math.abs(h.result)}
                 </span>
                 {onEditHand && <span style={{ fontSize:'0.52rem', color:C.textMuted, opacity:0.4 }}>✎</span>}
               </div>
@@ -359,12 +359,10 @@ function TopLeaks({ hands }) {
 
   const validHands = hands.filter(h => h.evImpact != null && h.leakCategory)
 
-  // Monthly multiplier: needs >= 14 days span of tracked hands
-  const timestamps  = validHands.map(h => new Date(h.date).getTime()).filter(t => !isNaN(t))
-  const daySpan     = timestamps.length >= 2
-    ? (Math.max(...timestamps) - Math.min(...timestamps)) / (1000 * 60 * 60 * 24)
-    : 0
-  const monthlyMult = daySpan >= 14 ? 30 / daySpan : null
+  // No projection: analyzed hands are a small, self-selected subset, so
+  // extrapolating to "$/month" would be statistically misleading. We only
+  // ever report the EV summed across the hands actually analyzed.
+  const monthlyMult = null
 
   const groups = {}
   for (const h of validHands) {
@@ -423,8 +421,11 @@ function TopLeaks({ hands }) {
             ))}
             <div style={{ padding:'12px 16px', background:'rgba(244,112,103,0.06)', border:'1px solid rgba(244,112,103,0.18)', borderRadius:'10px', textAlign:'center' }}>
               <span style={{ fontSize:'0.82rem', fontWeight:700, color:'#f47067' }}>
-                You are leaking ~${totalDisplay}{totalSuffix}
+                ~${totalDisplay} lost EV{totalSuffix}
               </span>
+              <div style={{ fontSize:'0.58rem', color:C.textMuted, marginTop:'4px' }}>
+                across {validHands.length} analyzed hand{validHands.length!==1?'s':''} · not a projection
+              </div>
             </div>
           </div>
         )
@@ -466,7 +467,7 @@ export default function BankrollManager() {
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:'16px' }}>
         <div>
           <h1 style={{ fontSize:'1.3rem', fontWeight:700, color:C.text, letterSpacing:'-0.02em', marginBottom:'3px' }}>Bankroll</h1>
-          <p style={{ fontSize:'0.72rem', color:C.textMuted }}>Live Cash · Vancouver</p>
+          <p style={{ fontSize:'0.72rem', color:C.textMuted }}>{sessions.length} session{sessions.length!==1?'s':''} tracked</p>
         </div>
         <button onClick={() => setShowModal(true)} style={{
           display:'flex', alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'8px', border:'none', minHeight:'44px',

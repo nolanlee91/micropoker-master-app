@@ -83,7 +83,8 @@ export function AuthProvider({ children }) {
           board:         h.boardCards || [],
           result_amount: h.result     || 0,
           notes:         h.notes      || null,
-          actions:       h.street     || 'Preflop',
+          street:        h.street     || 'Preflop',
+          actions:       h.action     || null,
           created_at:    h.date       || new Date().toISOString(),
         })
       }

@@ -16,6 +16,16 @@ const SUITS     = ['s','h','d','c']
 const SL        = { s:'♠', h:'♥', d:'♦', c:'♣' }
 const SC        = { s:'#111', h:'#cc2222', d:'#cc2222', c:'#111' }
 const POSITIONS = ['UTG','U+1','U+2','MP','HJ','CO','BTN','SB','BB']
+const STREETS   = ['Preflop','Flop','Turn','River']
+
+// Suggest the street from how many board cards are entered
+function streetFromBoard(board) {
+  const n = board?.length || 0
+  if (n === 0) return 'Preflop'
+  if (n <= 3)  return 'Flop'
+  if (n === 4) return 'Turn'
+  return 'River'
+}
 
 // ── Mini card ────────────────────────────────────────────────────────────────
 function MiniCard({ card }) {
@@ -72,6 +82,10 @@ function HandForm({ initial, onSave, onCancel }) {
   const [holeCards,  setHoleCards]  = useState(initial?.holeCards  || [])
   const [boardCards, setBoardCards] = useState(initial?.boardCards  || [])
   const [position,   setPosition]   = useState(initial?.position   || 'BTN')
+  const [street,     setStreet]     = useState(initial?.street     || streetFromBoard(initial?.boardCards))
+  const [streetTouched, setStreetTouched] = useState(false)  // becomes true once user picks a street manually
+  const [action,     setAction]     = useState(initial?.action     || '')
+  const [potSize,    setPotSize]    = useState(initial?.potSize != null ? String(initial.potSize) : '')
   const [resultAbs,  setResultAbs]  = useState(initAbs !== '' ? String(initAbs) : '')
   const [isNegative, setIsNegative] = useState(initNeg)
   const [notes,      setNotes]      = useState(initial?.notes      || '')
@@ -80,11 +94,19 @@ function HandForm({ initial, onSave, onCancel }) {
   const otherUsed = activeSlot === 'hole' ? boardCards : holeCards
 
   const toggleCard = (slot, key) => {
-    if (slot === 'hole')
+    if (slot === 'hole') {
       setHoleCards(p => p.includes(key) ? p.filter(c=>c!==key) : p.length<2 ? [...p,key] : p)
-    else
-      setBoardCards(p => p.includes(key) ? p.filter(c=>c!==key) : p.length<5 ? [...p,key] : p)
+    } else {
+      setBoardCards(p => {
+        const next = p.includes(key) ? p.filter(c=>c!==key) : p.length<5 ? [...p,key] : p
+        // Keep street in sync with the board until the user overrides it manually
+        if (!streetTouched) setStreet(streetFromBoard(next))
+        return next
+      })
+    }
   }
+
+  const pickStreet = (s) => { setStreet(s); setStreetTouched(true) }
 
   const handleSave = () => {
     if (holeCards.length < 2) return
@@ -95,7 +117,9 @@ function HandForm({ initial, onSave, onCancel }) {
       date:      initial?.date || new Date().toISOString(),
       sessionId: initial?.sessionId || null,
       holeCards, boardCards, position,
-      street:    initial?.street || 'Preflop',
+      street,
+      action:    action.trim(),
+      potSize:   potSize !== '' ? parseFloat(potSize) || null : null,
       result:    isNegative ? -absVal : absVal,
       notes,
     })
@@ -152,6 +176,25 @@ function HandForm({ initial, onSave, onCancel }) {
         </div>
       </div>
 
+      {/* Street — auto-synced to board, manually overridable */}
+      <div>
+        {lbl('Street')}
+        <div style={{ display:'flex', gap:'4px' }}>
+          {STREETS.map(s => {
+            const active = street === s
+            return (
+              <button key={s} onClick={() => pickStreet(s)} style={{
+                flex:1, minHeight:'34px', padding:'5px 6px', borderRadius:'8px', border:'none',
+                background: active ? C.primary : C.surfaceHigh,
+                color: active ? '#061a0e' : C.textMuted,
+                fontWeight: active ? 700 : 500,
+                fontSize:'0.68rem', cursor:'pointer', transition:'background 0.12s',
+              }}>{s}</button>
+            )
+          })}
+        </div>
+      </div>
+
       {/* Card slot tabs */}
       <div style={{ display:'flex', gap:'8px' }}>
         {[
@@ -185,6 +228,32 @@ function HandForm({ initial, onSave, onCancel }) {
           onToggle={key => toggleCard(activeSlot, key)}
           limit={activeSlot==='hole' ? 2 : 5}
         />
+      </div>
+
+      {/* Action line + Pot size */}
+      <div style={{ display:'flex', gap:'8px' }}>
+        <div style={{ flex:2 }}>
+          {lbl('Action (optional)')}
+          <input
+            type="text"
+            placeholder="e.g. raise 3bb, c-bet 1/2 pot, jam river"
+            value={action}
+            onChange={e => setAction(e.target.value)}
+            style={baseInput}
+          />
+        </div>
+        <div style={{ flex:1 }}>
+          {lbl('Pot ($, opt)')}
+          <input
+            type="number"
+            inputMode="numeric"
+            placeholder="0"
+            min="0"
+            value={potSize}
+            onChange={e => setPotSize(e.target.value.replace(/[^0-9.]/g,''))}
+            style={baseInput}
+          />
+        </div>
       </div>
 
       {/* Result — inline +/- toggle inside input */}
@@ -507,11 +576,11 @@ export default function HandHistory({ onAnalyze }) {
             </div>
           </div>
           <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'12px', padding:'16px 18px' }}>
-            <div style={{ fontSize:'0.55rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'10px' }}>Win Rate</div>
+            <div style={{ fontSize:'0.55rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'10px' }}>Hands Won</div>
             <div style={{ fontSize:'1.65rem', fontWeight:700, letterSpacing:'-0.03em', color:C.secondary, fontVariantNumeric:'tabular-nums' }}>
               {winRate}%
             </div>
-            <div style={{ fontSize:'0.6rem', color:C.textMuted, marginTop:'4px' }}>{hands.length} hands</div>
+            <div style={{ fontSize:'0.6rem', color:C.textMuted, marginTop:'4px' }}>of {hands.length} logged hands in profit</div>
           </div>
         </div>
       )}

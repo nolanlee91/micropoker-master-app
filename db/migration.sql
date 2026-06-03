@@ -51,6 +51,7 @@ create table if not exists hand_history (
   position      text not null,
   hole_cards    text[] not null,
   board         text[],
+  street        text not null default 'Preflop',
   pot_size      numeric(10,2),
   actions       text,
   result_amount numeric(10,2) not null default 0,
@@ -60,6 +61,15 @@ create table if not exists hand_history (
   leak_category text,
   created_at    timestamptz not null default now()
 );
+
+-- ── Upgrade existing installs ────────────────────────────────
+-- `street` used to be stored inside `actions`; split them apart so
+-- `actions` can hold the real betting line and `street` its own value.
+alter table hand_history add column if not exists street text not null default 'Preflop';
+update hand_history
+  set street  = actions,
+      actions = null
+  where actions in ('Preflop', 'Flop', 'Turn', 'River');
 
 alter table hand_history enable row level security;
 

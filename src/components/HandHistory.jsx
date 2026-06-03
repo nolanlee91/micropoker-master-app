@@ -16,9 +16,10 @@ const SUITS     = ['s','h','d','c']
 const SL        = { s:'♠', h:'♥', d:'♦', c:'♣' }
 const SC        = { s:'#111', h:'#cc2222', d:'#cc2222', c:'#111' }
 const POSITIONS = ['UTG','U+1','U+2','MP','HJ','CO','BTN','SB','BB']
-const STREETS   = ['Preflop','Flop','Turn','River']
 
-// Suggest the street from how many board cards are entered
+// Derive the street from how many board cards are entered
+// (0 → Preflop, 3 → Flop, 4 → Turn, 5 → River). The board already encodes
+// the street, so there's no separate control for it.
 function streetFromBoard(board) {
   const n = board?.length || 0
   if (n === 0) return 'Preflop'
@@ -82,8 +83,6 @@ function HandForm({ initial, onSave, onCancel }) {
   const [holeCards,  setHoleCards]  = useState(initial?.holeCards  || [])
   const [boardCards, setBoardCards] = useState(initial?.boardCards  || [])
   const [position,   setPosition]   = useState(initial?.position   || 'BTN')
-  const [street,     setStreet]     = useState(initial?.street     || streetFromBoard(initial?.boardCards))
-  const [streetTouched, setStreetTouched] = useState(false)  // becomes true once user picks a street manually
   const [action,     setAction]     = useState(initial?.action     || '')
   const [potSize,    setPotSize]    = useState(initial?.potSize != null ? String(initial.potSize) : '')
   const [resultAbs,  setResultAbs]  = useState(initAbs !== '' ? String(initAbs) : '')
@@ -94,19 +93,11 @@ function HandForm({ initial, onSave, onCancel }) {
   const otherUsed = activeSlot === 'hole' ? boardCards : holeCards
 
   const toggleCard = (slot, key) => {
-    if (slot === 'hole') {
+    if (slot === 'hole')
       setHoleCards(p => p.includes(key) ? p.filter(c=>c!==key) : p.length<2 ? [...p,key] : p)
-    } else {
-      setBoardCards(p => {
-        const next = p.includes(key) ? p.filter(c=>c!==key) : p.length<5 ? [...p,key] : p
-        // Keep street in sync with the board until the user overrides it manually
-        if (!streetTouched) setStreet(streetFromBoard(next))
-        return next
-      })
-    }
+    else
+      setBoardCards(p => p.includes(key) ? p.filter(c=>c!==key) : p.length<5 ? [...p,key] : p)
   }
-
-  const pickStreet = (s) => { setStreet(s); setStreetTouched(true) }
 
   const handleSave = () => {
     if (holeCards.length < 2) return
@@ -117,7 +108,7 @@ function HandForm({ initial, onSave, onCancel }) {
       date:      initial?.date || new Date().toISOString(),
       sessionId: initial?.sessionId || null,
       holeCards, boardCards, position,
-      street,
+      street:    streetFromBoard(boardCards),
       action:    action.trim(),
       potSize:   potSize !== '' ? parseFloat(potSize) || null : null,
       result:    isNegative ? -absVal : absVal,
@@ -171,25 +162,6 @@ function HandForm({ initial, onSave, onCancel }) {
                 whiteSpace:'nowrap',
                 transition:'background 0.12s',
               }}>{p}</button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Street — auto-synced to board, manually overridable */}
-      <div>
-        {lbl('Street')}
-        <div style={{ display:'flex', gap:'4px' }}>
-          {STREETS.map(s => {
-            const active = street === s
-            return (
-              <button key={s} onClick={() => pickStreet(s)} style={{
-                flex:1, minHeight:'34px', padding:'5px 6px', borderRadius:'8px', border:'none',
-                background: active ? C.primary : C.surfaceHigh,
-                color: active ? '#061a0e' : C.textMuted,
-                fontWeight: active ? 700 : 500,
-                fontSize:'0.68rem', cursor:'pointer', transition:'background 0.12s',
-              }}>{s}</button>
             )
           })}
         </div>

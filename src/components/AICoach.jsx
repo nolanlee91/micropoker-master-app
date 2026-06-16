@@ -1,8 +1,10 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { BrainCircuit, Send, RefreshCw, AlertCircle, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { BrainCircuit, Send, RefreshCw, AlertCircle, CheckCircle, ChevronDown, ChevronUp, TrendingDown, Lock } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useData } from '../context/DataContext'
+import { useAuth } from '../context/AuthContext'
 import { evaluateHeroHand } from '../utils/handEvaluator'
+import { computeLeaks, analyzedCount } from '../utils/leaks'
 import { supabase } from '../lib/supabase'
 import { usePro } from '../hooks/usePro'
 import Paywall from './Paywall'
@@ -365,6 +367,61 @@ function Bubble({ msg }) {
   )
 }
 
+// Progressive reveal of the Leak Profile — the moat. Encourages accumulation
+// before 5 hands, then reveals the recurring leaks and (for anonymous users) the
+// "save your profile" account prompt. Framed by RESULT, never by usage quota.
+function LeakProgress({ nAnalyzed, leaks, isAnonymous, onCreateAccount, linking }) {
+  if (nAnalyzed < 1) return null
+
+  // Pre-reveal: still accumulating, or no recurring leak yet.
+  if (nAnalyzed < 5 || leaks.length === 0) {
+    const msg = nAnalyzed < 3
+      ? `Analyzed ${nAnalyzed} hand${nAnalyzed > 1 ? 's' : ''}. Your Leak Profile unlocks at 5 — keep pasting hands.`
+      : nAnalyzed < 5
+        ? `We're starting to see patterns. ${5 - nAnalyzed} more hand${5 - nAnalyzed > 1 ? 's' : ''} to reveal your biggest leak.`
+        : `Analyzed ${nAnalyzed} hands — no recurring leak yet. Keep going.`
+    return (
+      <div style={{ marginTop:'8px', padding:'12px 14px', borderRadius:'12px', background:C.surface, border:`1px solid ${C.border}`, display:'flex', gap:'10px', alignItems:'center' }}>
+        <TrendingDown size={16} color={C.secondary} style={{ flexShrink:0 }} />
+        <div style={{ fontSize:'0.74rem', color:C.textMuted, lineHeight:1.5 }}>{msg}</div>
+      </div>
+    )
+  }
+
+  const top = leaks.slice(0, 3)
+  return (
+    <div style={{ marginTop:'8px', padding:'14px', borderRadius:'12px', background:C.surface, border:`1px solid ${C.primaryBorder}`, display:'flex', flexDirection:'column', gap:'10px' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+        <TrendingDown size={16} color={C.primary} />
+        <span style={{ fontSize:'0.8rem', fontWeight:800, color:C.text, letterSpacing:'-0.01em' }}>Your Leak Profile</span>
+        <span style={{ marginLeft:'auto', fontSize:'0.62rem', color:C.textMuted }}>{nAnalyzed} hands</span>
+      </div>
+      {top.map((l, i) => (
+        <div key={l.category} style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+          <span style={{ fontSize:'0.62rem', fontWeight:700, color:C.textMuted, width:'12px' }}>{i + 1}</span>
+          <span style={{ fontSize:'0.78rem', fontWeight:600, color:C.text, flex:1 }}>{LEAK_LABELS[l.category] || l.category}</span>
+          <span style={{ fontSize:'0.58rem', color:C.textMuted }}>{l.count} hands</span>
+          <span style={{ fontSize:'0.85rem', fontWeight:700, color:C.red, fontVariantNumeric:'tabular-nums', minWidth:'54px', textAlign:'right' }}>
+            -${Math.abs(Math.round(l.totalEv))}
+          </span>
+        </div>
+      ))}
+      {isAnonymous && (
+        <div style={{ marginTop:'4px', padding:'12px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}`, display:'flex', flexDirection:'column', gap:'8px' }}>
+          <div style={{ fontSize:'0.74rem', color:C.text, lineHeight:1.5, display:'flex', gap:'6px', alignItems:'flex-start' }}>
+            <Lock size={13} color={C.primary} style={{ marginTop:'2px', flexShrink:0 }} />
+            <span>We've found {leaks.length} recurring leak{leaks.length > 1 ? 's' : ''} costing you money. Create a free account to save your Leak Profile.</span>
+          </div>
+          <button onClick={onCreateAccount} disabled={linking}
+            style={{ padding:'9px 14px', borderRadius:'9px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontSize:'0.74rem', fontWeight:800, cursor: linking ? 'not-allowed' : 'pointer' }}>
+            {linking ? 'Connecting…' : 'Create free account →'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Pre-filled example so a first-time user with no hand of their own still gets
 // the "aha" in one click — kills the hidden "what do I even paste?" friction.
 // Written the way a live rec player actually tells a story (free text, not a form).
@@ -376,7 +433,8 @@ Turn 8. UTG checks, I bet $180, he calls.
 River A. UTG jams all-in for $250 into me. What should I do?`
 
 export default function AICoach({ preloadedHand, onHandConsumed }) {
-  const { updateHand } = useData()
+  const { updateHand, addHand, hands } = useData()
+  const { isAnonymous, linkGoogle } = useAuth()
   const { isPro, setIsPro } = usePro()
   const [showPaywall, setShowPaywall] = useState(false)
   const [messages,    setMessages]   = useLocalStorage('aicoach-messages', [])
@@ -389,10 +447,35 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   // Deterministic "instant read" shown WHILE Gemini thinks — fills latency and
   // proves we parsed the cards right (the correctness moat) before the LLM returns.
   const [instantRead, setInstantRead] = useState(null)
+  const [linking,     setLinking]     = useState(false)
   const bottomRef     = useRef(null)
   // Ref always reflects the latest loadedHand — avoids stale closures in async callbacks
   const currentHandRef = useRef(null)
   useEffect(() => { currentHandRef.current = loadedHand }, [loadedHand])
+  // Holds the extracted cards + raw text of a free-text hand being analyzed, so we
+  // can persist it (→ leak profile) once the analysis returns.
+  const pendingFreeHandRef = useRef(null)
+
+  // Save a free-text-analyzed hand into the user's hand store so it feeds the Leak
+  // Profile. Only the AI fields + extracted cards are kept (no manual logging UI).
+  const persistFreeHand = useCallback((analysis) => {
+    const pf = pendingFreeHandRef.current
+    if (!pf || !analysis) return
+    pendingFreeHandRef.current = null
+    addHand({
+      holeCards:    pf.hole,
+      boardCards:   pf.board,
+      position:     '',
+      street:       '',
+      action:       '',
+      result:       0,
+      notes:        (pf.text || '').slice(0, 500),
+      gameType:     getPref('user-default-game-type', 'Live Cash'),
+      aiAnalysis:   analysis,
+      leakCategory: analysis.leak_category || null,
+      evImpact:     typeof analysis.ev_impact === 'number' ? analysis.ev_impact : null,
+    }).catch(() => {})
+  }, [addHand])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior:'smooth' })
@@ -509,6 +592,8 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
             leakCategory: data.analysis.leak_category || null,
             evImpact:     typeof data.analysis.ev_impact === 'number' ? data.analysis.ev_impact : null,
           }).catch(() => {})
+        } else if (isHandAnalysis) {
+          persistFreeHand(data.analysis) // free-text hand → save for the leak profile
         }
 
       } else {
@@ -529,6 +614,8 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
                 leakCategory: recovered.leak_category || null,
                 evImpact:     typeof recovered.ev_impact === 'number' ? recovered.ev_impact : null,
               }).catch(() => {})
+            } else {
+              persistFreeHand(recovered) // free-text hand → save for the leak profile
             }
             return
           }
@@ -616,6 +703,9 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
       const { hole, board } = extractCardsFromText(text)
       const handEval = hole.length >= 2 ? evaluateHeroHand(hole, board) : null
       setInstantRead(buildInstantRead(handEval, hole, board))
+      // Remember the cards + text so we can persist this hand into the leak profile
+      // once the analysis returns.
+      pendingFreeHandRef.current = { hole, board, text }
       // Only let the deterministic value OVERRIDE the AI when we have a full board
       // (≥5 cards). For suitless live stories we can't verify the made hand, so we
       // pass null and let Gemini reason from the full text (documented best-effort).
@@ -631,6 +721,18 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   }
 
   const resultStr = loadedHand ? fmtResult(loadedHand.result) : null
+
+  // Leak profile drives the progressive reveal (hands accumulate across the session).
+  const nAnalyzed = useMemo(() => analyzedCount(hands), [hands])
+  const leaks     = useMemo(() => computeLeaks(hands),  [hands])
+
+  const handleCreateAccount = useCallback(async () => {
+    setLinking(true)
+    setError('')
+    const { error } = await linkGoogle()
+    if (error) { setLinking(false); setError(error.message) }
+    // on success the browser redirects to Google and back
+  }, [linkGoogle])
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100%', background:C.bg, fontFamily:"'Inter',sans-serif" }}>
@@ -788,6 +890,14 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
             </div>
           </div>
         )}
+
+        <LeakProgress
+          nAnalyzed={nAnalyzed}
+          leaks={leaks}
+          isAnonymous={isAnonymous}
+          onCreateAccount={handleCreateAccount}
+          linking={linking}
+        />
 
         <div ref={bottomRef} />
       </div>

@@ -132,6 +132,17 @@ export function AuthProvider({ children }) {
     })
   }
 
+  // Convert the current ANONYMOUS user into a real Google account by linking the
+  // identity to the SAME user id — so the accumulated leak profile is preserved,
+  // not replaced by a fresh account. (Requires "Manual linking" enabled in the
+  // Supabase Auth settings.) Used by the "save your Leak Profile" prompt.
+  async function linkGoogle() {
+    return supabase.auth.linkIdentity({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
+    })
+  }
+
   async function signOut() {
     localStorage.removeItem('aicoach-messages')
     await supabase.auth.signOut()
@@ -160,6 +171,7 @@ export function AuthProvider({ children }) {
       skipMigration,
       signInWithGoogle,
       signInWithEmail,
+      linkGoogle,
       signOut,
       deleteAccount,
     }}>

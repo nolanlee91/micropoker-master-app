@@ -479,7 +479,11 @@ function HandCard({ hand, sessions, onEdit, onDelete, onAnalyze, onLink }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function HandHistory({ onAnalyze }) {
-  const { hands, sessions, addHand, updateHand, deleteHand, linkHandToSession } = useData()
+  const { hands: allHands, sessions, addHand, updateHand, deleteHand, linkHandToSession } = useData()
+  // History lists MANUALLY-logged hands only. Free-text hands analyzed in Coach are
+  // saved (for the Leak Profile) with no position/cards — exclude them here so they
+  // don't show as empty "Preflop" rows. They still power the leak profile.
+  const hands = allHands.filter(h => h.position)
   const [formMode, setFormMode] = useState(null)
   const navigate = useNavigate()
   const location = useLocation()

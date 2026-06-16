@@ -501,8 +501,7 @@ export default function BankrollManager() {
       {/* Profit chart */}
       <ProfitChart sessions={sessions} />
 
-      {/* Top leaks */}
-      <TopLeaks hands={hands} />
+      {/* Leaks moved to the Coach (AI Leak Finder) — removed here to avoid duplication */}
 
       {/* Session history */}
       <div style={{ marginBottom:'12px' }}>

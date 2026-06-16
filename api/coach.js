@@ -28,12 +28,11 @@ export default async function handler(req, res) {
 
   const {
     // initial analysis fields
-    messages, isHandAnalysis, gameType, playerType, language,
+    messages, isHandAnalysis, language,
     // deterministic hand evaluation (computed on frontend)
     verifiedHeroHandStrength, verifiedBestFiveCards, verifiedBoardTexture,
     // follow-up explicit fields
-    request_type, question, hand_context,
-    game_type, villain_type, response_language,
+    request_type, question, hand_context, response_language,
   } = req.body
 
   console.log('[coach] received:', { request_type, isHandAnalysis, msgCount: messages?.length })

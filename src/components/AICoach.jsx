@@ -461,7 +461,6 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
       action:       '',
       result:       0,
       notes:        (pf.text || '').slice(0, 500),
-      gameType:     getPref('user-default-game-type', 'Live Cash'),
       aiAnalysis:   analysis,
       leakCategory: analysis.leak_category || null,
       evImpact:     typeof analysis.ev_impact === 'number' ? analysis.ev_impact : null,
@@ -517,7 +516,6 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     setError('')
 
     // Read preferences at call time so they're always current
-    const gameType = getPref('user-default-game-type', 'Live Cash')
     const language = getPref('aicoach-language', 'English')
 
     const userMsg = { role:'user', content }
@@ -536,7 +534,6 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     const payload = isHandAnalysis
       ? {
           isHandAnalysis: true,
-          gameType,
           playerType,
           language,
           messages: msgHistory,
@@ -549,7 +546,6 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           request_type:      'follow_up',
           question:          content,
           hand_context:      currentHandRef.current || null,
-          game_type:         gameType,
           villain_type:      playerType,
           response_language: language,
           messages:          msgHistory,

@@ -19,7 +19,6 @@ const C = {
 }
 
 const LANG_SHORT = { English: 'EN', Vietnamese: 'VI', Chinese: 'ZH' }
-const GAME_TYPES = ['Live Cash', 'Online Cash', 'MTT']
 const LANGUAGES  = ['English', 'Vietnamese', 'Chinese']
 
 function getDisplayName(session) {
@@ -30,7 +29,7 @@ function getDisplayName(session) {
   return (session.user.email || '').split('@')[0]
 }
 
-function SettingsPanel({ onClose, panelRef, defaultGameType, setDefaultGameType, language, setLanguage }) {
+function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
   const { deleteAccount } = useAuth()
   const [soundEnabled, setSoundEnabled] = useLocalStorage('sound-enabled', true)
   const [confirming, setConfirming] = useState(false)
@@ -73,13 +72,6 @@ function SettingsPanel({ onClose, panelRef, defaultGameType, setDefaultGameType,
         <button onClick={onClose} style={{ background:'none', border:'none', color:C.textMuted, cursor:'pointer', padding:'2px', display:'flex' }}>
           <X size={13} />
         </button>
-      </div>
-
-      <div style={{ marginBottom:'14px' }}>
-        {lbl('Default Game Type')}
-        <div style={{ display:'flex', gap:'5px' }}>
-          {GAME_TYPES.map(v => btn(v, defaultGameType, setDefaultGameType, C.primary))}
-        </div>
       </div>
 
       <div>
@@ -153,7 +145,6 @@ export default function Layout({ children }) {
   const displayName = getDisplayName(session)
   const [mobile, setMobile] = useState(window.innerWidth < 768)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [defaultGameType, setDefaultGameType] = useLocalStorage('user-default-game-type', 'Live Cash')
   const [language, setLanguage] = useLocalStorage('aicoach-language', 'English')
   const panelRef = useRef(null)
   const triggerRef = useRef(null)
@@ -243,8 +234,6 @@ export default function Layout({ children }) {
                 <SettingsPanel
                   onClose={() => setSettingsOpen(false)}
                   panelRef={panelRef}
-                  defaultGameType={defaultGameType}
-                  setDefaultGameType={setDefaultGameType}
                   language={language}
                   setLanguage={setLanguage}
                 />
@@ -302,8 +291,6 @@ export default function Layout({ children }) {
                 <SettingsPanel
                   onClose={() => setSettingsOpen(false)}
                   panelRef={panelRef}
-                  defaultGameType={defaultGameType}
-                  setDefaultGameType={setDefaultGameType}
                   language={language}
                   setLanguage={setLanguage}
                 />

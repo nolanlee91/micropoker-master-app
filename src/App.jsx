@@ -2,8 +2,6 @@ import React, { useState } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
 import { PrivacyPolicy, Support } from './components/Legal'
-import Onboarding from './components/Onboarding'
-import { useLocalStorage } from './hooks/useLocalStorage'
 import HandHistory from './components/HandHistory'
 import AICoach from './components/AICoach'
 import OddsCalculator from './components/OddsCalculator'
@@ -17,15 +15,18 @@ import { DataProvider, useData } from './context/DataContext'
 export default function App() {
   const { session, showMigrate } = useAuth()
   const { pathname } = useLocation()
-  const [onboarded, setOnboarded] = useLocalStorage('onboarding-done-v1', false)
 
   // Public legal/support pages — must be reachable without auth (store requirement)
   if (pathname === '/privacy') return <PrivacyPolicy />
   if (pathname === '/support') return <Support />
 
+  // session: undefined = loading OR anonymous sign-in in flight → spinner.
+  // No login wall: AuthContext signs the user in anonymously so the Paste Hand
+  // screen answers directly (KPI: first insight < 60s). LoginScreen is now only a
+  // fallback for when anonymous sign-in fails (session resolves to null).
+  // Onboarding is no longer a gate — it must not block the 60s flow.
   if (session === undefined) return <Spinner />
   if (!session) return <LoginScreen />
-  if (!onboarded) return <Onboarding onDone={() => setOnboarded(true)} />
 
   return (
     <DataProvider>
@@ -44,7 +45,7 @@ function AppRoutes() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Navigate to="/history" replace />} />
+        <Route path="/" element={<Navigate to="/coach" replace />} />
         <Route path="/history"  element={<HandHistory onAnalyze={hand => setAnalyzingHand(hand)} />} />
         <Route path="/bankroll" element={<BankrollManager />} />
         <Route path="/odds"     element={<OddsCalculator />} />

@@ -117,6 +117,38 @@ function parseAnalysisText(text) {
   return null
 }
 
+// Best-effort card extraction from free text (paste history OR a live story).
+// Only pulls cards that appear in CLUSTERS of 2+ adjacent tokens (e.g. "Ah Kh",
+// "Kh 7c 2d") — a lone fragment like the word "as" never matches, which kills the
+// classic false positive. Suitless storytelling ("K 7 2 rainbow") yields no board
+// cards → deterministic eval degrades gracefully (we just don't show a read).
+// Known limitation: villain hole cards shown at showdown could be misread as board;
+// acceptable for V1 since the read is a bonus and analysis still runs.
+function extractCardsFromText(text) {
+  if (!text || typeof text !== 'string') return { hole: [], board: [] }
+  const norm = text.replace(/10([shdcSHDC])/g, 'T$1') // "10h" → "Th"
+  // Token-run approach: split on whitespace, keep only tokens that are EXACTLY a
+  // card (2 chars, after stripping brackets/punctuation), and accept only runs of
+  // ≥2 consecutive card tokens. Rank/suit letters (t,h,a,d,s,c) collide with common
+  // words — "with"→Th, "had"→Ad, "as"→As — but those never form a standalone 2-char
+  // token, so this is robust against that whole class of false positives.
+  const isCard = t => /^[2-9TJQKA][shdc]$/i.test(t)
+  const strip  = t => t.replace(/^[[({<]+|[\])}>,.:;!?]+$/g, '')
+  const norm1  = c => c[0].toUpperCase() + c[1].toLowerCase()
+  const out = []
+  let run = []
+  const flush = () => { if (run.length >= 2) out.push(...run); run = [] }
+  for (const raw of norm.split(/\s+/)) {
+    const t = strip(raw)
+    if (isCard(t)) run.push(norm1(t))
+    else flush()
+  }
+  flush()
+  const seen = new Set()
+  const uniq = out.filter(c => (seen.has(c) ? false : (seen.add(c), true)))
+  return { hole: uniq.slice(0, 2), board: uniq.slice(2, 7) }
+}
+
 function MiniCard({ card }) {
   const r = card.slice(0,-1), s = card.slice(-1)
   return (
@@ -333,6 +365,16 @@ function Bubble({ msg }) {
   )
 }
 
+// Pre-filled example so a first-time user with no hand of their own still gets
+// the "aha" in one click — kills the hidden "what do I even paste?" friction.
+// Written the way a live rec player actually tells a story (free text, not a form).
+const EXAMPLE_HAND = `1/3 live, $300 effective.
+I'm on the BTN with Ah Kh.
+UTG raises to $15, two callers, I make it $70. Only UTG calls.
+Flop K 7 2 rainbow, pot ~$160. UTG checks, I bet $90, he calls.
+Turn 8. UTG checks, I bet $180, he calls.
+River A. UTG jams all-in for $250 into me. What should I do?`
+
 export default function AICoach({ preloadedHand, onHandConsumed }) {
   const { updateHand } = useData()
   const { isPro, setIsPro } = usePro()
@@ -344,6 +386,9 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   const [loading,     setLoading]    = useState(false)
   const [loadedHand,  setLoadedHand] = useState(null)
   const [error,       setError]      = useState('')
+  // Deterministic "instant read" shown WHILE Gemini thinks — fills latency and
+  // proves we parsed the cards right (the correctness moat) before the LLM returns.
+  const [instantRead, setInstantRead] = useState(null)
   const bottomRef     = useRef(null)
   // Ref always reflects the latest loadedHand — avoids stale closures in async callbacks
   const currentHandRef = useRef(null)
@@ -352,6 +397,23 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior:'smooth' })
   }, [messages, loading])
+
+  // Once the response lands (loading → false) the AnalysisCard shows the verified
+  // strength, so the transient instant-read banner is no longer needed.
+  useEffect(() => { if (!loading) setInstantRead(null) }, [loading])
+
+  // Build the instant deterministic read from already-evaluated cards.
+  function buildInstantRead(handEval, hole, board) {
+    if (!handEval || hole.length < 2) return null
+    const full = handEval.contextLevel === 'full'
+    return {
+      cards:   [...hole, ...board],
+      // Only claim a made-hand strength when we have the full board — otherwise
+      // just confirm we read the hole cards correctly (no misleading label).
+      label:   full ? handEval.heroHandStrength : 'Reading your cards…',
+      texture: full ? (handEval.boardTexture?.description || '') : '',
+    }
+  }
 
   // Preload hand: key on hand ID so switching hands always fires the effect.
   // Clear messages so the previous hand's conversation doesn't pollute the new analysis.
@@ -366,7 +428,8 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   const sendMessage = useCallback(async (text, isHandAnalysis = false, handEval = null) => {
     const content = (text || input).trim()
     if (!content || loading) return
-    if (!isPro) { setShowPaywall(true); return }
+    // Analyzing a hand is FREE — this is the hook that competes with ChatGPT.
+    // The paywall moves to the Leak Profile (see PROJECT/v1-60s-flow.md), not here.
     setError('')
 
     // Read preferences at call time so they're always current
@@ -515,10 +578,11 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   const handleAnalyzeHand = useCallback(() => {
     const hand = loadedHand   // explicit capture at click time
     if (!hand || loading) return
-    if (!isPro) { setShowPaywall(true); return }
+    // Free to analyze (see sendMessage note). Paywall lives at the Leak Profile.
 
     // Deterministic hand evaluation — before calling AI
     const handEval = evaluateHeroHand(hand.holeCards, hand.boardCards)
+    setInstantRead(buildInstantRead(handEval, hand.holeCards || [], hand.boardCards || []))
     console.log('[coach] hand eval:', handEval.heroHandStrength, '| best5:', handEval.bestFiveCards, '| board:', handEval.boardTexture?.description)
     console.log('[coach] Analyzing hand:', hand.id, hand.holeCards, '| villain:', playerType)
 
@@ -541,8 +605,29 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     sendMessage(prompt, true, handEval)
   }, [loadedHand, extraNotes, loading, playerType, sendMessage, isPro])
 
+  // Main composer send. The FIRST message (no preloaded hand, empty thread) is
+  // treated as a HAND to analyze → structured analysis path (Mistake/EV/Better line),
+  // with a best-effort deterministic read shown instantly. Later messages are
+  // follow-up chat on that hand.
+  const handleSend = useCallback(() => {
+    const text = input.trim()
+    if (!text || loading) return
+    if (!loadedHand && messages.length === 0) {
+      const { hole, board } = extractCardsFromText(text)
+      const handEval = hole.length >= 2 ? evaluateHeroHand(hole, board) : null
+      setInstantRead(buildInstantRead(handEval, hole, board))
+      // Only let the deterministic value OVERRIDE the AI when we have a full board
+      // (≥5 cards). For suitless live stories we can't verify the made hand, so we
+      // pass null and let Gemini reason from the full text (documented best-effort).
+      const trustEval = handEval?.contextLevel === 'full' ? handEval : null
+      sendMessage(text, true, trustEval)
+    } else {
+      sendMessage(text) // follow-up
+    }
+  }, [input, loading, loadedHand, messages.length, sendMessage])
+
   const handleKey = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
   const resultStr = loadedHand ? fmtResult(loadedHand.result) : null
@@ -645,14 +730,51 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
       {/* Messages */}
       <div style={{ flex:1, overflowY:'auto', padding:'16px', display:'flex', flexDirection:'column' }}>
         {messages.length === 0 && !loadedHand && (
-          <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'10px', opacity:0.25 }}>
-            <BrainCircuit size={44} color={C.secondary} />
-            <div style={{ fontSize:'0.75rem', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:C.text, textAlign:'center' }}>Ask anything about your hand</div>
-            <div style={{ fontSize:'0.7rem', color:C.textMuted, textAlign:'center', maxWidth:'220px', lineHeight:1.5 }}>Describe a spot or send from Hand History for structured analysis</div>
+          <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'14px', padding:'0 16px' }}>
+            <div style={{ opacity:0.35 }}><BrainCircuit size={44} color={C.secondary} /></div>
+            <div style={{ fontSize:'1.35rem', fontWeight:800, letterSpacing:'-0.02em', color:C.text, textAlign:'center', lineHeight:1.2 }}>
+              Paste a hand.<br/>Find your leaks.
+            </div>
+            <div style={{ fontSize:'0.78rem', color:C.textMuted, textAlign:'center', maxWidth:'280px', lineHeight:1.55 }}>
+              Paste a hand history or just tell the story below — online or live. Get your biggest mistake and a better line in seconds.
+            </div>
+            <button
+              onClick={() => setInput(EXAMPLE_HAND)}
+              style={{
+                marginTop:'4px', padding:'9px 16px', borderRadius:'10px',
+                border:`1px solid ${C.primaryBorder}`, background:C.primaryDim,
+                color:C.primary, fontSize:'0.76rem', fontWeight:700, cursor:'pointer',
+                display:'flex', alignItems:'center', gap:'6px', transition:'all 0.15s',
+              }}
+            >
+              Try this example →
+            </button>
           </div>
         )}
 
         {messages.map((msg, i) => <Bubble key={i} msg={msg} />)}
+
+        {/* Instant deterministic read — shown while Gemini thinks (correctness moat + latency fill) */}
+        {instantRead && loading && (
+          <div style={{ display:'flex', gap:'8px', alignItems:'flex-start', marginBottom:'12px' }}>
+            <div style={{ width:'28px', height:'28px', minWidth:'28px', borderRadius:'8px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <CheckCircle size={14} color={C.primary} />
+            </div>
+            <div style={{ flex:1, padding:'10px 14px', background:'rgba(22,27,34,0.9)', border:`1px solid ${C.primaryBorder}`, borderRadius:'4px 16px 16px 16px', display:'flex', flexDirection:'column', gap:'8px' }}>
+              {instantRead.cards.length > 0 && (
+                <div style={{ display:'flex', gap:'3px', flexWrap:'wrap' }}>
+                  {instantRead.cards.map(c => <MiniCard key={c} card={c} />)}
+                </div>
+              )}
+              <div style={{ fontSize:'0.8rem', fontWeight:700, color:C.text, letterSpacing:'-0.01em' }}>
+                {instantRead.label}
+              </div>
+              {instantRead.texture && (
+                <div style={{ fontSize:'0.68rem', color:C.textMuted }}>{instantRead.texture} board</div>
+              )}
+            </div>
+          </div>
+        )}
 
         {loading && (
           <div style={{ display:'flex', gap:'8px', alignItems:'flex-start', marginBottom:'12px' }}>
@@ -704,7 +826,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
             style={{ flex:1, padding:'10px 12px', background:C.surfaceHigh, border:`1px solid ${C.border}`, borderRadius:'10px', color:C.text, fontSize:'0.875rem', resize:'none', outline:'none', fontFamily:"'Inter',sans-serif", lineHeight:1.6, colorScheme:'dark' }}
           />
           <button
-            onClick={() => sendMessage()}
+            onClick={handleSend}
             disabled={!input.trim() || loading}
             style={{
               width:'44px', height:'44px', borderRadius:'10px', border:'none', flexShrink:0,

@@ -16,13 +16,29 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      if (session) checkMigration()
+      if (session) {
+        setSession(session)
+        // Migration prompt only matters for real accounts, not the silent anon user.
+        if (!session.user?.is_anonymous) checkMigration()
+      } else {
+        // No session → sign in anonymously so the app works with NO login wall.
+        // Identity exists from second 1 (powers the leak profile); the user can
+        // upgrade to a real account later to keep it. See PROJECT/v1-60s-flow.md.
+        // onAuthStateChange fires with the new anon session on success.
+        supabase.auth.signInAnonymously().then(({ error }) => {
+          if (error) {
+            // Anonymous sign-ins must be enabled in the Supabase dashboard
+            // (Authentication → Providers → Anonymous). Fall back to login wall.
+            console.error('Anonymous sign-in failed:', error.message)
+            setSession(null)
+          }
+        })
+      }
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
       setSession(session)
-      if (session) checkMigration()
+      if (session && !session.user?.is_anonymous) checkMigration()
     })
 
     return () => subscription.unsubscribe()
@@ -136,6 +152,9 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       session,
+      // true while the user is on the silent anonymous identity (no real account yet).
+      // Used to decide when to surface the "create account to save your profile" prompt.
+      isAnonymous: !!session?.user?.is_anonymous,
       showMigrate,
       migrateData,
       skipMigration,

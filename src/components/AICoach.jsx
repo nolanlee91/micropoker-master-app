@@ -369,7 +369,7 @@ function LeakProgress({ nAnalyzed, leaks, isAnonymous, onCreateAccount, linking 
       ? `Analyzed ${nAnalyzed} hand${nAnalyzed > 1 ? 's' : ''}. Your Leak Profile unlocks at 5 — keep pasting hands.`
       : nAnalyzed < 5
         ? `We're starting to see patterns. ${5 - nAnalyzed} more hand${5 - nAnalyzed > 1 ? 's' : ''} to reveal your biggest leak.`
-        : `Analyzed ${nAnalyzed} hands — no recurring leak yet. Keep going.`
+        : `Analyzed ${nAnalyzed} hands — no leaks found yet, solid play. Keep going.`
     return (
       <div style={{ marginTop:'8px', padding:'12px 14px', borderRadius:'12px', background:C.surface, border:`1px solid ${C.border}`, display:'flex', gap:'10px', alignItems:'center' }}>
         <TrendingDown size={16} color={C.secondary} style={{ flexShrink:0 }} />
@@ -379,6 +379,7 @@ function LeakProgress({ nAnalyzed, leaks, isAnonymous, onCreateAccount, linking 
   }
 
   const top = leaks.slice(0, 3)
+  const nRecurring = leaks.filter(l => l.recurring).length
   return (
     <div style={{ marginTop:'8px', padding:'14px', borderRadius:'12px', background:C.surface, border:`1px solid ${C.primaryBorder}`, display:'flex', flexDirection:'column', gap:'10px' }}>
       <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
@@ -390,7 +391,9 @@ function LeakProgress({ nAnalyzed, leaks, isAnonymous, onCreateAccount, linking 
         <div key={l.category} style={{ display:'flex', alignItems:'center', gap:'8px' }}>
           <span style={{ fontSize:'0.62rem', fontWeight:700, color:C.textMuted, width:'12px' }}>{i + 1}</span>
           <span style={{ fontSize:'0.78rem', fontWeight:600, color:C.text, flex:1 }}>{LEAK_LABELS[l.category] || l.category}</span>
-          <span style={{ fontSize:'0.58rem', color:C.textMuted }}>{l.count} hands</span>
+          <span style={{ fontSize:'0.58rem', fontWeight: l.recurring ? 700 : 400, color: l.recurring ? C.primary : C.textMuted }}>
+            {l.recurring ? `×${l.count} recurring` : `${l.count} hand`}
+          </span>
           <span style={{ fontSize:'0.85rem', fontWeight:700, color:C.red, fontVariantNumeric:'tabular-nums', minWidth:'54px', textAlign:'right' }}>
             -${Math.abs(Math.round(l.totalEv))}
           </span>
@@ -400,7 +403,9 @@ function LeakProgress({ nAnalyzed, leaks, isAnonymous, onCreateAccount, linking 
         <div style={{ marginTop:'4px', padding:'12px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}`, display:'flex', flexDirection:'column', gap:'8px' }}>
           <div style={{ fontSize:'0.74rem', color:C.text, lineHeight:1.5, display:'flex', gap:'6px', alignItems:'flex-start' }}>
             <Lock size={13} color={C.primary} style={{ marginTop:'2px', flexShrink:0 }} />
-            <span>We've found {leaks.length} recurring leak{leaks.length > 1 ? 's' : ''} costing you money. Create a free account to save your Leak Profile.</span>
+            <span>{nRecurring > 0
+              ? `We've found ${nRecurring} recurring leak${nRecurring > 1 ? 's' : ''} costing you money. Create a free account to save your Leak Profile.`
+              : `Your Leak Profile is building — ${leaks.length} leak${leaks.length > 1 ? 's' : ''} so far. Create a free account to save it.`}</span>
           </div>
           <button onClick={onCreateAccount} disabled={linking}
             style={{ padding:'9px 14px', borderRadius:'9px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontSize:'0.74rem', fontWeight:800, cursor: linking ? 'not-allowed' : 'pointer' }}>

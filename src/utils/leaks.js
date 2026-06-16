@@ -1,9 +1,8 @@
-// Aggregate AI-analyzed hands into ranked recurring leaks.
+// Aggregate AI-analyzed hands into ranked leaks (most money lost first).
 // This is the moat: ChatGPT scores one hand and forgets; we accumulate across
-// hands and surface the pattern that is costing the most money.
-//
-// A leak only counts as "recurring" when it shows up in ≥2 hands with a net
-// negative EV — a single bad hand is variance, not a leak.
+// hands and surface what's costing the most. Every negative-EV category is shown
+// so the profile isn't empty after a few mistakes; a category seen in ≥2 hands is
+// flagged `recurring` (a true pattern vs one-off variance).
 export function computeLeaks(hands) {
   const valid = (hands || []).filter(
     h => h.evImpact != null && h.leakCategory && h.leakCategory !== 'no_clear_leak'
@@ -17,13 +16,19 @@ export function computeLeaks(hands) {
     groups[h.leakCategory].count++
   }
   return Object.values(groups)
-    .filter(g => g.totalEv < 0 && g.count >= 2)
+    .filter(g => g.totalEv < 0)
     .map(g => ({
       ...g,
-      // Confidence grows with sample size — a 2-hand leak is a hint, not a verdict.
+      // recurring = a real pattern (≥2 hands), not one-off variance. This is the moat.
+      recurring:  g.count >= 2,
       confidence: g.count >= 5 ? 'High' : g.count >= 3 ? 'Medium' : 'Low',
     }))
     .sort((a, b) => a.totalEv - b.totalEv) // most negative (most costly) first
+}
+
+// Count of leaks that are actually recurring (≥2 hands) — for the moat-framed prompt.
+export function recurringCount(leaks) {
+  return (leaks || []).filter(l => l.recurring).length
 }
 
 // How many hands have actually been AI-analyzed (drives the progressive reveal).

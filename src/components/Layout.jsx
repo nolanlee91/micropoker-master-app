@@ -4,12 +4,11 @@ import { History, Wallet, Calculator, BrainCircuit, Spade, Zap, LogOut, Settings
 import { useAuth } from '../context/AuthContext'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 
+// V1 = AI Leak Finder, one job. History/Bankroll/Quiz/Odds are parked: routes
+// still work by URL (App.jsx), just hidden from nav so the app stays focused and
+// free-text hands don't bleed into a History/Bankroll view. Re-add a line to show one.
 const NAV = [
-  { path: '/history',  label: 'History',  icon: History },
-  { path: '/bankroll', label: 'Bankroll', icon: Wallet },
   { path: '/coach',    label: 'Coach',    icon: BrainCircuit },
-  { path: '/quiz',     label: 'Quiz',     icon: Zap },
-  { path: '/odds',     label: 'Odds',     icon: Calculator },
 ]
 
 const C = {
@@ -30,7 +29,9 @@ function getDisplayName(session) {
 }
 
 function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
-  const { deleteAccount } = useAuth()
+  const { deleteAccount, session } = useAuth()
+  const isAnon = !!session?.user?.is_anonymous
+  const email  = session?.user?.email || ''
   const [soundEnabled, setSoundEnabled] = useLocalStorage('sound-enabled', true)
   const [confirming, setConfirming] = useState(false)
   const [deleting,   setDeleting]   = useState(false)
@@ -89,9 +90,14 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
         </div>
       </div>
 
-      {/* Account — delete (App Store requirement) */}
+      {/* Account — who you're signed in as + delete (App Store requirement) */}
       <div style={{ marginTop:'16px', paddingTop:'14px', borderTop:`1px solid ${C.border}` }}>
         {lbl('Account')}
+        <div style={{ fontSize:'0.66rem', color:C.textMuted, marginBottom:'10px', wordBreak:'break-all', lineHeight:1.5 }}>
+          {isAnon
+            ? 'Guest — your leak profile is saved on this device. Create an account to keep it across devices.'
+            : (email ? <>Signed in as <span style={{ color:C.text }}>{email}</span></> : 'Signed in')}
+        </div>
         {!confirming ? (
           <button
             onClick={() => { setConfirming(true); setDelError('') }}

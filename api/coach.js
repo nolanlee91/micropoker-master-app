@@ -138,9 +138,15 @@ STEP 2 — HAND STRENGTH (deterministic — no guessing)
 STEP 3 — BOARD TEXTURE
 - Note if board is: paired / flush draw possible / straight draw possible / dry / wet.
 
-STEP 4 — DECISION ANALYSIS
-- Only now analyze the action and give your verdict.
-- If action line is missing or unclear, say "limited context" in summary.
+STEP 4 — ACTION RECONSTRUCTION (do this BEFORE judging — it must be identical every time for the same hand)
+- Reconstruct the betting line street by street with the exact amounts given.
+- Identify each preflop raise LEVEL explicitly: open / 3-bet / 4-bet / squeeze, and who did it.
+- State the effective stack, the pot going into the decision, and the EXACT amount the hero is facing on the decision street.
+- Put this reconstruction in the "actionLine" field. If something is genuinely missing, say so there; do not invent amounts.
+
+STEP 5 — DECISION ANALYSIS
+- Base the verdict on the reconstructed actionLine, referencing the actual amounts.
+- If the action line is genuinely missing or unclear, say "limited context" in summary.
 
 CRITICAL: Return ONLY a JSON object. No text before or after it. No markdown. No code fences. No backticks.
 
@@ -148,6 +154,7 @@ Required format:
 {
   "heroHandStrength": "exact classification, e.g. top pair top kicker, second pair, flush draw, etc.",
   "boardTexture": "brief board description, e.g. paired wet board, rainbow dry board",
+  "actionLine": "reconstructed line w/ amounts + raise levels, e.g. 'BTN 3-bet to $70 pre, UTG calls; c-bet $90 flop call; bet $180 turn call; faces $250 river jam ($300 eff)'",
   "summary": "One blunt verdict sentence",
   "biggestMistake": "The main error in one direct sentence",
   "mistakeType": "overcall OR overbet OR underbet OR bad_bluff OR wrong_fold OR bad_sizing OR missed_value OR correct",
@@ -163,7 +170,11 @@ Required format:
 Rules:
 - Only output the JSON. Nothing else.
 - All amounts are in dollars unless user explicitly writes "bb".
-- ev_impact must be a number (dollars). Negative = lost EV. Positive = gained EV.
+- ev_impact must be GROUNDED in the actual dollars in the hand, NOT a round guess.
+  Compute it as the EV difference between the hero's action and the best line, using
+  the real amount faced and pot. Example: calling a $250 river jam while beaten ~80%
+  of the time costs roughly the amount put in that you don't get back — on the order
+  of the bet faced, not a token -$10. Show the number reflects the actual stakes.
 - leak_category must be exactly one value from the list above.
 - gameTypeUsed must be exactly: ${gameContext}
 - villainTypeUsed must be exactly: ${villainType}
@@ -218,7 +229,10 @@ Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
             // 4096 could be exhausted on thinking and truncate the JSON mid-field
             // (→ parse fail → raw JSON shown). 8192 leaves room for thinking + output.
             maxOutputTokens: 8192,
-            temperature: isAnalysis ? 0.2 : 0.3,
+            // Analysis at temp 0 → far less run-to-run drift in the verdict, the
+            // reasoning, and the EV number for the same hand (was 0.2 → noticeably
+            // different explanations each call). Follow-up keeps a little warmth.
+            temperature: isAnalysis ? 0 : 0.3,
             // Force clean JSON (no markdown fences / prose) so extractJSON parses
             // reliably. Both analysis and follow-up paths expect JSON.
             responseMimeType: 'application/json',
@@ -246,6 +260,7 @@ Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
         const out = {
           heroHandStrength: typeof parsed.heroHandStrength === 'string' ? parsed.heroHandStrength : '',
           boardTexture:     typeof parsed.boardTexture     === 'string' ? parsed.boardTexture     : '',
+          actionLine:       typeof parsed.actionLine       === 'string' ? parsed.actionLine       : '',
           summary:          typeof parsed.summary          === 'string' ? parsed.summary          : '',
           biggestMistake:   typeof parsed.biggestMistake   === 'string' ? parsed.biggestMistake   : '',
           mistakeType:      VALID_MISTAKE_TYPES.includes(parsed.mistakeType) ? parsed.mistakeType : 'other',

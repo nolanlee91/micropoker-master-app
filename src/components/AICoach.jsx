@@ -101,6 +101,7 @@ function parseAnalysisText(text) {
       return {
         heroHandStrength: typeof p.heroHandStrength === 'string' ? p.heroHandStrength : '',
         boardTexture:     typeof p.boardTexture     === 'string' ? p.boardTexture     : '',
+        actionLine:       typeof p.actionLine       === 'string' ? p.actionLine       : '',
         summary,
         biggestMistake:   typeof p.biggestMistake === 'string' ? p.biggestMistake : '',
         mistakeType:      VALID_MISTAKE_TYPES.includes(p.mistakeType) ? p.mistakeType : 'other',
@@ -209,6 +210,13 @@ function AnalysisCard({ analysis }) {
                 {analysis.boardTexture}
               </span>
             )}
+          </div>
+        )}
+
+        {/* Reconstructed action line — the fixed set of facts the verdict is built on */}
+        {analysis.actionLine && (
+          <div style={{ padding:'8px 12px', borderRadius:'8px', background:C.surfaceHi, fontSize:'0.68rem', color:C.textMuted, lineHeight:1.55, fontVariantNumeric:'tabular-nums' }}>
+            {analysis.actionLine}
           </div>
         )}
 

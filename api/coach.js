@@ -47,9 +47,8 @@ export default async function handler(req, res) {
   const isFollowUp = request_type === 'follow_up'
   const isAnalysis = isHandAnalysis === true && !isFollowUp
 
-  // Normalise context fields (accept both naming conventions)
-  const gameContext  = game_type  || gameType  || 'Live Cash'
-  const villainType  = villain_type || playerType || 'Unknown'
+  // Game type & villain read are no longer structured inputs — the model reads them
+  // from the hand text. Only language remains a normalised setting.
   const responseLang = response_language || language || 'English'
 
   const langGuide = {
@@ -62,21 +61,6 @@ export default async function handler(req, res) {
     English:    '',
     Vietnamese: 'IMPORTANT: Write answer and keyTakeaway in Vietnamese. Do NOT translate JSON keys or the confidence value.',
     Chinese:    'IMPORTANT: Write answer and keyTakeaway in Simplified Chinese. Do NOT translate JSON keys or the confidence value.',
-  }
-
-  const gameGuide = {
-    'Live Cash':   'Live Cash: population underbluffs, especially large river bets. Weight villain\'s range toward value.',
-    'Online Cash': 'Online Cash: population is more aggressive and balanced. River overbets can be bluffs.',
-    'MTT':         'MTT: stack depth and ICM matter. Factor tournament life. Near bubble/FT, tighten marginal calls.',
-  }
-
-  const villainGuide = {
-    'Unknown': 'Villain type unknown: use population defaults.',
-    'Nit':     'Nit: extremely tight range. 3-bets/large bets are almost always value. Fold to aggression is usually correct.',
-    'TAG':     'TAG: solid balanced range. Respect aggression but do not over-fold.',
-    'LAG':     'LAG: wide range, high bluff frequency. Call down wider on boards that miss their range.',
-    'Fish':    'Fish: wide calls, passive mistakes. Do not bluff. Bet thin for value.',
-    'Rec':     'Rec: recreational, wide and passive. Value-bet relentlessly. Bluffing is low EV.',
   }
 
   const LEAK_CATEGORIES = [
@@ -155,8 +139,10 @@ STEP 4 — ACTION RECONSTRUCTION (do this BEFORE judging — it must be identica
 
 STEP 5 — DECISION ANALYSIS
 - Base the verdict on the reconstructed actionLine, referencing the actual amounts.
-- Use the villain read if one is given in the story (e.g. "nit", "maniac") — it changes
-  the verdict (vs a nit, big river aggression is value → fold more; vs a maniac, call wider).
+- Factor in the game type and villain read AS STATED IN THE HAND, using standard population
+  tendencies: live players underbluff big rivers (fold more); online pools are more aggressive
+  (call wider); MTT = ICM/stack depth; nits rarely bluff; fish/recs call too much and rarely
+  bluff. Read these from the text — never ask for them.
 - ROBUSTNESS: real hands have typos, rounding, or a missing/inconsistent amount. Make the
   most reasonable assumption (e.g. assume stacks are deep enough for the action that
   happened), note it in ONE short clause in actionLine, and STILL commit to a definitive
@@ -178,9 +164,7 @@ Required format:
   "ev_impact": <number in dollars, negative if user lost EV, positive if profitable>,
   "confidence": "high OR medium OR low",
   "whyWrong": "Why this was wrong, max 2 lines",
-  "betterLine": "Exact action: jam / fold / call / raise to X bb",
-  "gameTypeUsed": "${gameContext}",
-  "villainTypeUsed": "${villainType}"
+  "betterLine": "Exact action: jam / fold / call / raise to X bb"
 }
 
 Rules:
@@ -192,20 +176,7 @@ Rules:
   of the time costs roughly the amount put in that you don't get back — on the order
   of the bet faced, not a token -$10. Show the number reflects the actual stakes.
 - leak_category must be exactly one value from the list above.
-- DETECT the game type FROM THE HAND TEXT ("1/3 live"/"live"→Live Cash; "NL25"/"online"/"zoom"→Online Cash; "MTT"/"tournament"/"ICM"/"bubble"→MTT) and set gameTypeUsed to it. If the hand does not say, default to "${gameContext}".
-- DETECT the villain read FROM THE HAND TEXT ("nit"/"reg"→Nit or TAG, "LAG"/"maniac"→LAG, "fish"/"station"→Fish, "rec"→Rec) and set villainTypeUsed to the closest of Nit/TAG/LAG/Fish/Rec/Unknown. If none is described, use "Unknown".
-- Apply the population read that MATCHES what you detected — NEVER apply a live read to an online hand (or vice versa).
 ${langGuide[responseLang] ? '\n' + langGuide[responseLang] : ''}
-Game population reads (use the one matching the detected game type):
-- Live Cash — ${gameGuide['Live Cash']}
-- Online Cash — ${gameGuide['Online Cash']}
-- MTT — ${gameGuide['MTT']}
-Villain reads (use the one matching the detected villain; Unknown = population defaults):
-- Nit — ${villainGuide['Nit']}
-- TAG — ${villainGuide['TAG']}
-- LAG — ${villainGuide['LAG']}
-- Fish — ${villainGuide['Fish']}
-- Rec — ${villainGuide['Rec']}
 ${verifiedHeroHandStrength
   ? `\nVERIFIED HERO HAND (computed by deterministic code — YOU MUST USE THIS EXACT VALUE):
   heroHandStrength = "${verifiedHeroHandStrength}"${verifiedBestFiveCards?.length ? `\n  Best 5 cards: ${verifiedBestFiveCards.join(' ')}` : ''}${verifiedBoardTexture ? `\n  Board texture: ${verifiedBoardTexture}` : ''}
@@ -233,10 +204,9 @@ Rules:
 - For hypothetical questions (e.g. "what if KJ instead of K6"), answer the hypothetical clearly.
 - All amounts in dollars unless user writes "bb".
 - type field must be exactly: follow_up
-- Read game type & villain from the hand context/story — apply the matching population
-  read below; never apply a live read to an online hand or vice versa.
-${langGuideFollowUp[responseLang] ? '\n' + langGuideFollowUp[responseLang] : ''}
-Game population reads: Live Cash — ${gameGuide['Live Cash']} | Online Cash — ${gameGuide['Online Cash']} | MTT — ${gameGuide['MTT']}`
+- Factor in game type & villain as stated in the hand (live underbluffs, online is more
+  aggressive, nits rarely bluff) using standard population tendencies.
+${langGuideFollowUp[responseLang] ? '\n' + langGuideFollowUp[responseLang] : ''}`
 
   const systemText = isAnalysis ? analysisSystemText : followUpSystemText
 
@@ -295,9 +265,6 @@ Game population reads: Live Cash — ${gameGuide['Live Cash']} | Online Cash —
           confidence:       ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'medium',
           whyWrong:         typeof parsed.whyWrong   === 'string' ? parsed.whyWrong   : '',
           betterLine:       typeof parsed.betterLine  === 'string' ? parsed.betterLine  : '',
-          // Use what the model DETECTED from the hand text (not a hidden preference).
-          gameTypeUsed:     ['Live Cash','Online Cash','MTT'].includes(parsed.gameTypeUsed) ? parsed.gameTypeUsed : gameContext,
-          villainTypeUsed:  ['Nit','TAG','LAG','Fish','Rec','Unknown'].includes(parsed.villainTypeUsed) ? parsed.villainTypeUsed : 'Unknown',
         }
 
         return res.status(200).json({ type: 'analysis', analysis: out })

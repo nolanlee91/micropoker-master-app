@@ -110,8 +110,6 @@ function parseAnalysisText(text) {
         confidence:       ['high', 'medium', 'low'].includes(p.confidence) ? p.confidence : 'medium',
         whyWrong:         typeof p.whyWrong   === 'string' ? p.whyWrong   : '',
         betterLine:       typeof p.betterLine  === 'string' ? p.betterLine  : '',
-        gameTypeUsed:     typeof p.gameTypeUsed    === 'string' ? p.gameTypeUsed    : '',
-        villainTypeUsed:  typeof p.villainTypeUsed === 'string' ? p.villainTypeUsed : '',
       }
     } catch (e) {
       console.error('[coach] frontend parse attempt failed:', e.message)
@@ -180,22 +178,6 @@ function AnalysisCard({ analysis }) {
         <BrainCircuit size={14} color="#071525" />
       </div>
       <div style={{ flex:1, display:'flex', flexDirection:'column', gap:'8px' }}>
-
-        {/* Context tags */}
-        {(analysis.gameTypeUsed || analysis.villainTypeUsed) && (
-          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
-            {analysis.gameTypeUsed && (
-              <span style={{ fontSize:'0.58rem', fontWeight:600, color:C.secondary, background:'rgba(146,204,255,0.1)', padding:'2px 8px', borderRadius:'8px', letterSpacing:'0.05em' }}>
-                {analysis.gameTypeUsed}
-              </span>
-            )}
-            {analysis.villainTypeUsed && analysis.villainTypeUsed !== 'Unknown' && (
-              <span style={{ fontSize:'0.58rem', fontWeight:600, color:C.textMuted, background:C.surfaceHi, padding:'2px 8px', borderRadius:'8px', letterSpacing:'0.05em' }}>
-                vs {analysis.villainTypeUsed}
-              </span>
-            )}
-          </div>
-        )}
 
         {/* Hand strength + board texture */}
         {(analysis.heroHandStrength || analysis.boardTexture) && (

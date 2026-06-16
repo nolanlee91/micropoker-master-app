@@ -213,8 +213,15 @@ Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
           system_instruction: { parts: [{ text: systemText }] },
           contents,
           generationConfig: {
-            maxOutputTokens: 4096,
+            // gemini-2.5-flash is a *thinking* model: reasoning tokens count toward
+            // maxOutputTokens. The analysis prompt asks for multi-step reasoning, so
+            // 4096 could be exhausted on thinking and truncate the JSON mid-field
+            // (→ parse fail → raw JSON shown). 8192 leaves room for thinking + output.
+            maxOutputTokens: 8192,
             temperature: isAnalysis ? 0.2 : 0.3,
+            // Force clean JSON (no markdown fences / prose) so extractJSON parses
+            // reliably. Both analysis and follow-up paths expect JSON.
+            responseMimeType: 'application/json',
           },
         }),
       }

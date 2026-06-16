@@ -4,11 +4,12 @@ import { History, Wallet, Calculator, BrainCircuit, Spade, Zap, LogOut, Settings
 import { useAuth } from '../context/AuthContext'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 
-// V1 = AI Leak Finder, one job. History/Bankroll/Quiz/Odds are parked: routes
-// still work by URL (App.jsx), just hidden from nav so the app stays focused and
-// free-text hands don't bleed into a History/Bankroll view. Re-add a line to show one.
 const NAV = [
+  { path: '/history',  label: 'History',  icon: History },
+  { path: '/bankroll', label: 'Bankroll', icon: Wallet },
   { path: '/coach',    label: 'Coach',    icon: BrainCircuit },
+  { path: '/quiz',     label: 'Quiz',     icon: Zap },
+  { path: '/odds',     label: 'Odds',     icon: Calculator },
 ]
 
 const C = {

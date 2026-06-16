@@ -189,7 +189,7 @@ function AnalysisCard({ analysis }) {
                 {analysis.gameTypeUsed}
               </span>
             )}
-            {analysis.villainTypeUsed && (
+            {analysis.villainTypeUsed && analysis.villainTypeUsed !== 'Unknown' && (
               <span style={{ fontSize:'0.58rem', fontWeight:600, color:C.textMuted, background:C.surfaceHi, padding:'2px 8px', borderRadius:'8px', letterSpacing:'0.05em' }}>
                 vs {analysis.villainTypeUsed}
               </span>

@@ -192,11 +192,20 @@ Rules:
   of the time costs roughly the amount put in that you don't get back — on the order
   of the bet faced, not a token -$10. Show the number reflects the actual stakes.
 - leak_category must be exactly one value from the list above.
-- gameTypeUsed must be exactly: ${gameContext}
-- villainTypeUsed must be exactly: ${villainType}
+- DETECT the game type FROM THE HAND TEXT ("1/3 live"/"live"→Live Cash; "NL25"/"online"/"zoom"→Online Cash; "MTT"/"tournament"/"ICM"/"bubble"→MTT) and set gameTypeUsed to it. If the hand does not say, default to "${gameContext}".
+- DETECT the villain read FROM THE HAND TEXT ("nit"/"reg"→Nit or TAG, "LAG"/"maniac"→LAG, "fish"/"station"→Fish, "rec"→Rec) and set villainTypeUsed to the closest of Nit/TAG/LAG/Fish/Rec/Unknown. If none is described, use "Unknown".
+- Apply the population read that MATCHES what you detected — NEVER apply a live read to an online hand (or vice versa).
 ${langGuide[responseLang] ? '\n' + langGuide[responseLang] : ''}
-Game context: ${gameGuide[gameContext] || gameGuide['Live Cash']}
-Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}
+Game population reads (use the one matching the detected game type):
+- Live Cash — ${gameGuide['Live Cash']}
+- Online Cash — ${gameGuide['Online Cash']}
+- MTT — ${gameGuide['MTT']}
+Villain reads (use the one matching the detected villain; Unknown = population defaults):
+- Nit — ${villainGuide['Nit']}
+- TAG — ${villainGuide['TAG']}
+- LAG — ${villainGuide['LAG']}
+- Fish — ${villainGuide['Fish']}
+- Rec — ${villainGuide['Rec']}
 ${verifiedHeroHandStrength
   ? `\nVERIFIED HERO HAND (computed by deterministic code — YOU MUST USE THIS EXACT VALUE):
   heroHandStrength = "${verifiedHeroHandStrength}"${verifiedBestFiveCards?.length ? `\n  Best 5 cards: ${verifiedBestFiveCards.join(' ')}` : ''}${verifiedBoardTexture ? `\n  Board texture: ${verifiedBoardTexture}` : ''}
@@ -224,9 +233,10 @@ Rules:
 - For hypothetical questions (e.g. "what if KJ instead of K6"), answer the hypothetical clearly.
 - All amounts in dollars unless user writes "bb".
 - type field must be exactly: follow_up
+- Read game type & villain from the hand context/story — apply the matching population
+  read below; never apply a live read to an online hand or vice versa.
 ${langGuideFollowUp[responseLang] ? '\n' + langGuideFollowUp[responseLang] : ''}
-Game context: ${gameGuide[gameContext] || gameGuide['Live Cash']}
-Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
+Game population reads: Live Cash — ${gameGuide['Live Cash']} | Online Cash — ${gameGuide['Online Cash']} | MTT — ${gameGuide['MTT']}`
 
   const systemText = isAnalysis ? analysisSystemText : followUpSystemText
 
@@ -285,8 +295,9 @@ Villain context: ${villainGuide[villainType] || villainGuide['Unknown']}`
           confidence:       ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'medium',
           whyWrong:         typeof parsed.whyWrong   === 'string' ? parsed.whyWrong   : '',
           betterLine:       typeof parsed.betterLine  === 'string' ? parsed.betterLine  : '',
-          gameTypeUsed:     gameContext,
-          villainTypeUsed:  villainType,
+          // Use what the model DETECTED from the hand text (not a hidden preference).
+          gameTypeUsed:     ['Live Cash','Online Cash','MTT'].includes(parsed.gameTypeUsed) ? parsed.gameTypeUsed : gameContext,
+          villainTypeUsed:  ['Nit','TAG','LAG','Fish','Rec','Unknown'].includes(parsed.villainTypeUsed) ? parsed.villainTypeUsed : 'Unknown',
         }
 
         return res.status(200).json({ type: 'analysis', analysis: out })

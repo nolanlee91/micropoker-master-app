@@ -457,6 +457,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   const [instantRead, setInstantRead] = useState(null)
   const [linking,     setLinking]     = useState(false)
   const bottomRef     = useRef(null)
+  const inputRef      = useRef(null)
   // Ref always reflects the latest loadedHand — avoids stale closures in async callbacks
   const currentHandRef = useRef(null)
   useEffect(() => { currentHandRef.current = loadedHand }, [loadedHand])
@@ -492,6 +493,16 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   // Once the response lands (loading → false) the AnalysisCard shows the verified
   // strength, so the transient instant-read banner is no longer needed.
   useEffect(() => { if (!loading) setInstantRead(null) }, [loading])
+
+  // Auto-grow the composer to fit a pasted hand (instead of a fixed 2 rows you have
+  // to scroll inside). Runs on any input change incl. "Try this example". Capped so
+  // it never eats the whole screen; scrolls past the cap.
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 200) + 'px'
+  }, [input])
 
   // Build the instant deterministic read from already-evaluated cards.
   function buildInstantRead(handEval, hole, board) {
@@ -935,6 +946,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
       <div style={{ padding:'12px 16px', background:C.surface, borderTop:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:'8px', flexShrink:0 }}>
         <div style={{ display:'flex', gap:'8px', alignItems:'flex-end' }}>
           <textarea
+            ref={inputRef}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKey}
@@ -944,7 +956,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
               : 'Paste a hand… (Enter to send)'
             }
             rows={2}
-            style={{ flex:1, padding:'10px 12px', background:C.surfaceHigh, border:`1px solid ${C.border}`, borderRadius:'10px', color:C.text, fontSize:'0.875rem', resize:'none', outline:'none', fontFamily:"'Inter',sans-serif", lineHeight:1.6, colorScheme:'dark' }}
+            style={{ flex:1, minHeight:'52px', maxHeight:'200px', padding:'10px 12px', background:C.surfaceHigh, border:`1px solid ${C.border}`, borderRadius:'10px', color:C.text, fontSize:'0.875rem', resize:'none', outline:'none', overflowY:'auto', fontFamily:"'Inter',sans-serif", lineHeight:1.6, colorScheme:'dark' }}
           />
           <button
             onClick={handleSend}

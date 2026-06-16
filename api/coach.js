@@ -135,8 +135,17 @@ STEP 2 — HAND STRENGTH (deterministic — no guessing)
 - DO NOT assume straight or flush unless the cards explicitly form one. Count the cards.
 - DO NOT invent any opponent's hand.
 
-STEP 3 — BOARD TEXTURE
-- Note if board is: paired / flush draw possible / straight draw possible / dry / wet.
+STEP 3 — BOARD TEXTURE (read the COMMUNITY cards ONLY — this is where coaches hallucinate)
+- List the community cards (flop + turn + river) and write out their five ranks.
+- The board is "paired" ONLY if two or more of THOSE COMMUNITY cards share a rank.
+  The hero (or villain) holding a card that matches a board card does NOT pair the board.
+- HARD RULE: if the five board ranks are all different, the board is UNPAIRED. On an
+  unpaired board a full house and quads are IMPOSSIBLE — do NOT say "full house",
+  "boat", or "paired" anywhere. The strongest possible made hands are: sets, straights,
+  flushes, two pair. Only claim villain "has a full house" if the board is actually paired.
+- Then note: paired / monotone / flush possible / straight possible / dry / wet.
+- When you name the hands that beat the hero, list only hands that are POSSIBLE given
+  this exact board.
 
 STEP 4 — ACTION RECONSTRUCTION (do this BEFORE judging — it must be identical every time for the same hand)
 - Reconstruct the betting line street by street with the exact amounts given.

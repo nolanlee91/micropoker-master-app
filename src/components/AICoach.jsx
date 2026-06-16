@@ -516,7 +516,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     onHandConsumed?.()
   }, [preloadedHand?.id])
 
-  const sendMessage = useCallback(async (text, isHandAnalysis = false, handEval = null) => {
+  const sendMessage = useCallback(async (text, isHandAnalysis = false, handEval = null, freshThread = false) => {
     const content = (text || input).trim()
     if (!content || loading) return
     // Analyzing a hand is FREE — this is the hook that competes with ChatGPT.
@@ -533,8 +533,12 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     setInput('')
     setLoading(true)
 
-    // Build payload — follow-up gets explicit hand context + question
-    const msgHistory = newMessages.slice(-12).map(m => ({ role:m.role, content:m.content || '' }))
+    // Build payload — follow-up gets explicit hand context + question.
+    // freshThread (a NEW hand pasted mid-conversation) sends ONLY this hand as
+    // context, so a prior hand's chat doesn't contaminate the new analysis. The
+    // visible thread still keeps every hand.
+    const msgHistory = (freshThread ? [userMsg] : newMessages.slice(-12))
+      .map(m => ({ role:m.role, content:m.content || '' }))
 
     const payload = isHandAnalysis
       ? {
@@ -707,8 +711,14 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   const handleSend = useCallback(() => {
     const text = input.trim()
     if (!text || loading) return
-    if (!loadedHand && messages.length === 0) {
-      const { hole, board } = extractCardsFromText(text)
+    const { hole, board } = extractCardsFromText(text)
+    // Treat as a NEW hand to analyze — not just the first message, but ANY message
+    // that looks like a pasted hand (≥2 hole cards + a board / multiple lines / real
+    // length). Without this, the 2nd hand pasted into a thread fell through to the
+    // follow-up chat path and returned a "Key Takeaway" blurb instead of a card.
+    const looksLikeHand = hole.length >= 2 && (board.length >= 1 || /\n/.test(text) || text.length > 60)
+    const isNewHand = !loadedHand && (looksLikeHand || messages.length === 0)
+    if (isNewHand) {
       const handEval = hole.length >= 2 ? evaluateHeroHand(hole, board) : null
       setInstantRead(buildInstantRead(handEval, hole, board))
       // Remember the cards + text so we can persist this hand into the leak profile
@@ -718,9 +728,10 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
       // (≥5 cards). For suitless live stories we can't verify the made hand, so we
       // pass null and let Gemini reason from the full text (documented best-effort).
       const trustEval = handEval?.contextLevel === 'full' ? handEval : null
-      sendMessage(text, true, trustEval)
+      // freshThread=true → analyze this hand in isolation (don't feed prior hands).
+      sendMessage(text, true, trustEval, true)
     } else {
-      sendMessage(text) // follow-up
+      sendMessage(text) // follow-up on the current hand
     }
   }, [input, loading, loadedHand, messages.length, sendMessage])
 

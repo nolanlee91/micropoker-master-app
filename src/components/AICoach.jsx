@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { BrainCircuit, Send, RefreshCw, AlertCircle, CheckCircle, ChevronDown, ChevronUp, TrendingDown, Lock } from 'lucide-react'
+import { BrainCircuit, Send, Plus, AlertCircle, CheckCircle, ChevronDown, ChevronUp, TrendingDown, Lock } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
@@ -764,12 +764,14 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           </div>
           <div>
             <div style={{ fontSize:'0.9rem', fontWeight:700, color:C.text, letterSpacing:'-0.01em' }}>AI Coach</div>
-            <div style={{ fontSize:'0.62rem', color:C.textMuted }}>Powered by Gemini · GTO-aware</div>
+            <div style={{ fontSize:'0.62rem', color:C.textMuted }}>Hand analysis & leak finder</div>
           </div>
         </div>
-        <button onClick={() => { setMessages([]); setError(''); setLoadedHand(null); setExtraNotes('') }}
-          style={{ width:'36px', height:'36px', borderRadius:'8px', border:'none', background:C.surfaceHi, color:C.textMuted, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <RefreshCw size={14} />
+        {/* Explicit "new hand" — clears the thread so the next paste is analyzed fresh.
+            No guessing whether a message is a new hand or a follow-up. */}
+        <button onClick={() => { setMessages([]); setError(''); setLoadedHand(null); setExtraNotes(''); setInput(''); setInstantRead(null); pendingFreeHandRef.current = null }}
+          style={{ height:'36px', padding:'0 14px', borderRadius:'8px', border:`1px solid ${C.primaryBorder}`, background:C.primaryDim, color:C.primary, cursor:'pointer', display:'flex', alignItems:'center', gap:'6px', fontSize:'0.74rem', fontWeight:700 }}>
+          <Plus size={15} /> New hand
         </button>
       </div>
 
@@ -928,29 +930,19 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
         </div>
       )}
 
-      {/* Free-text input — always available for follow-up chat */}
+      {/* Free-text input. Villain type is no longer a selector — just describe the
+          villain in the story ("vs a nit who never bluffs") and the model uses it. */}
       <div style={{ padding:'12px 16px', background:C.surface, borderTop:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:'8px', flexShrink:0 }}>
-        {/* Villain selector — only when no preloaded hand (hand card has its own) */}
-        {!loadedHand && (
-          <div style={{ display:'flex', gap:'6px' }}>
-            {['Unknown', 'Nit', 'TAG', 'LAG', 'Fish', 'Rec'].map(type => (
-              <button key={type} onClick={() => setPlayerType(type)} style={{
-                flex:1, padding:'5px 4px', borderRadius:'8px',
-                border:`1px solid ${playerType===type ? C.secondary : C.border}`,
-                background: playerType===type ? 'rgba(146,204,255,0.1)' : 'transparent',
-                color: playerType===type ? C.secondary : C.textMuted,
-                fontSize:'0.6rem', fontWeight:600, cursor:'pointer', transition:'all 0.15s',
-              }}>{type}</button>
-            ))}
-          </div>
-        )}
-
         <div style={{ display:'flex', gap:'8px', alignItems:'flex-end' }}>
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKey}
-            placeholder={loadedHand ? 'Ask a follow-up question…' : 'Describe your hand… (Enter to send)'}
+            placeholder={
+              loadedHand ? 'Ask a follow-up question…'
+              : messages.length > 0 ? 'Ask a follow-up — or paste a new hand'
+              : 'Paste a hand… (Enter to send)'
+            }
             rows={2}
             style={{ flex:1, padding:'10px 12px', background:C.surfaceHigh, border:`1px solid ${C.border}`, borderRadius:'10px', color:C.text, fontSize:'0.875rem', resize:'none', outline:'none', fontFamily:"'Inter',sans-serif", lineHeight:1.6, colorScheme:'dark' }}
           />

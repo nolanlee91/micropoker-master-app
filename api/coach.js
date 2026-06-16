@@ -155,7 +155,14 @@ STEP 4 — ACTION RECONSTRUCTION (do this BEFORE judging — it must be identica
 
 STEP 5 — DECISION ANALYSIS
 - Base the verdict on the reconstructed actionLine, referencing the actual amounts.
-- If the action line is genuinely missing or unclear, say "limited context" in summary.
+- Use the villain read if one is given in the story (e.g. "nit", "maniac") — it changes
+  the verdict (vs a nit, big river aggression is value → fold more; vs a maniac, call wider).
+- ROBUSTNESS: real hands have typos, rounding, or a missing/inconsistent amount. Make the
+  most reasonable assumption (e.g. assume stacks are deep enough for the action that
+  happened), note it in ONE short clause in actionLine, and STILL commit to a definitive
+  verdict, mistakeType, and a real ev_impact number estimated from the amounts you DO have.
+- NEVER answer "cannot determine" / "limited context" and NEVER leave ev_impact at 0 just
+  because one figure is unclear. Only use "limited context" if there is essentially no hand.
 
 CRITICAL: Return ONLY a JSON object. No text before or after it. No markdown. No code fences. No backticks.
 

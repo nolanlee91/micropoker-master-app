@@ -433,12 +433,12 @@ function LeakProgress({ nAnalyzed, leaks, isAnonymous, onCreateAccount, linking 
 // Pre-filled example so a first-time user with no hand of their own still gets
 // the "aha" in one click — kills the hidden "what do I even paste?" friction.
 // Written the way a live rec player actually tells a story (free text, not a form).
-const EXAMPLE_HAND = `1/3 live, $300 effective.
-I'm on the BTN with Ah Kh.
+const EXAMPLE_HAND = `1/3 live, $650 effective.
+I'm on the BTN with Ah Kh. UTG is a tight reg, nitty all night.
 UTG raises to $15, two callers, I make it $70. Only UTG calls.
 Flop K 7 2 rainbow, pot ~$160. UTG checks, I bet $90, he calls.
 Turn 8. UTG checks, I bet $180, he calls.
-River A. UTG jams all-in for $250 into me. What should I do?`
+River A. UTG suddenly jams all-in for $250 into me. What should I do?`
 
 export default function AICoach({ preloadedHand, onHandConsumed }) {
   const { updateHand, addHand, hands } = useData()

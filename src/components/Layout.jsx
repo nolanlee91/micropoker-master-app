@@ -8,8 +8,8 @@ import { useLocalStorage } from '../hooks/useLocalStorage'
 const NAV = [
   { path: '/history',  label: 'History',  icon: History },
   { path: '/bankroll', label: 'Bankroll', icon: Wallet },
-  { path: '/coach',    label: 'Coach',    icon: BrainCircuit },
-  { path: '/leaks',    label: 'Leaks',    icon: TrendingDown },
+  { path: '/coach',    label: 'Coach',    icon: BrainCircuit, primary: true },
+  { path: '/leaks',    label: 'Leaks',    icon: TrendingDown, primary: true },
   { path: '/quiz',     label: 'Quiz',     icon: Zap },
   { path: '/odds',     label: 'Odds',     icon: Calculator },
 ]
@@ -413,20 +413,34 @@ export default function Layout({ children }) {
       {/* ── Mobile bottom nav ───────────────────────────────── */}
       {mobile && (
         <nav style={{ position:'fixed', bottom:0, left:0, right:0, height:'60px', background:C.surface, borderTop:`1px solid ${C.border}`, display:'flex', zIndex:200 }}>
-          {NAV.map(item => {
+          {NAV.map((item, i) => {
             const Icon = item.icon
+            // Divider wherever we cross between the primary (Coach/Leaks) group and
+            // the rest — visually fences off the two core features in the middle.
+            const showDivider = i > 0 && NAV[i - 1].primary !== item.primary
+            const iconSize = item.primary ? 21 : 17
+            const idleColor = item.primary ? C.text : C.textMuted   // primary pops even when inactive
             return (
-              <NavLink key={item.path} to={item.path} style={({ isActive }) => ({
-                flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                gap:'3px', textDecoration:'none', color: isActive ? C.primary : C.textMuted,
-              })}>
-                {({ isActive }) => (<>
-                  <Icon size={18} color={isActive ? C.primary : C.textMuted} />
-                  <span style={{ fontSize:'0.52rem', fontWeight:isActive?600:400, color:isActive?C.primary:C.textMuted, letterSpacing:'0.01em' }}>
-                    {item.label}
-                  </span>
-                </>)}
-              </NavLink>
+              <React.Fragment key={item.path}>
+                {showDivider && <div style={{ width:'1px', alignSelf:'center', height:'28px', background:C.border }} />}
+                <NavLink to={item.path} style={({ isActive }) => ({
+                  flex: item.primary ? 1.3 : 1,
+                  display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                  gap:'3px', textDecoration:'none',
+                })}>
+                  {({ isActive }) => (<>
+                    <Icon size={iconSize} color={isActive ? C.primary : idleColor} strokeWidth={item.primary ? 2.4 : 2} />
+                    <span style={{
+                      fontSize: item.primary ? '0.56rem' : '0.5rem',
+                      fontWeight: isActive ? 700 : (item.primary ? 600 : 400),
+                      color: isActive ? C.primary : idleColor,
+                      letterSpacing:'0.01em',
+                    }}>
+                      {item.label}
+                    </span>
+                  </>)}
+                </NavLink>
+              </React.Fragment>
             )
           })}
         </nav>

@@ -62,8 +62,8 @@ export default async function handler(req, res) {
       client_reference_id: user.id,
       metadata: { supabase_user_id: user.id },
       subscription_data: { metadata: { supabase_user_id: user.id } },
-      success_url: `${origin}/coach?checkout=success`,
-      cancel_url:  `${origin}/coach?checkout=cancel`,
+      success_url: `${origin}/leaks?checkout=success`,
+      cancel_url:  `${origin}/leaks?checkout=cancel`,
       allow_promotion_codes: true,
     }
     if (customerId) params.customer = customerId

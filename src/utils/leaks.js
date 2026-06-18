@@ -1,3 +1,17 @@
+// Human labels for each leak category (shared by AICoach nudge + Leak Profile).
+export const LEAK_LABELS = {
+  river_call_too_wide: 'River Call Too Wide',
+  turn_call_too_wide:  'Turn Call Too Wide',
+  overbluff:           'Overbluff',
+  missed_value:        'Missed Value',
+  passive_play:        'Passive Play',
+  bad_preflop:         'Bad Preflop',
+  overpair_overplay:   'Overpair Overplay',
+  top_pair_overplay:   'Top Pair Overplay',
+  draw_chasing:        'Draw Chasing',
+  no_clear_leak:       'No Clear Leak',
+}
+
 // Aggregate AI-analyzed hands into ranked leaks (most money lost first).
 // This is the moat: ChatGPT scores one hand and forgets; we accumulate across
 // hands and surface what's costing the most. Every negative-EV category is shown

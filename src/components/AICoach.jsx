@@ -1,13 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { BrainCircuit, Send, Plus, AlertCircle, CheckCircle, ChevronDown, ChevronUp, TrendingDown, Lock } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { BrainCircuit, Send, Plus, AlertCircle, CheckCircle, ChevronDown, ChevronUp, ChevronRight, TrendingDown } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useData } from '../context/DataContext'
-import { useAuth } from '../context/AuthContext'
 import { evaluateHeroHand } from '../utils/handEvaluator'
-import { computeLeaks, analyzedCount } from '../utils/leaks'
+import { computeLeaks, analyzedCount, LEAK_LABELS } from '../utils/leaks'
 import { supabase } from '../lib/supabase'
-import { usePro } from '../hooks/usePro'
-import Paywall from './Paywall'
 
 const C = {
   bg:          '#0B0E14',
@@ -43,19 +41,6 @@ const MISTAKE_LABELS = {
 
 const VALID_MISTAKE_TYPES = ['overcall', 'overbet', 'underbet', 'bad_bluff', 'wrong_fold', 'bad_sizing', 'missed_value', 'correct']
 const VALID_LEAK_CATS     = ['river_call_too_wide', 'turn_call_too_wide', 'overbluff', 'missed_value', 'passive_play', 'bad_preflop', 'overpair_overplay', 'top_pair_overplay', 'draw_chasing', 'no_clear_leak']
-
-const LEAK_LABELS = {
-  river_call_too_wide: 'River Call Too Wide',
-  turn_call_too_wide:  'Turn Call Too Wide',
-  overbluff:           'Overbluff',
-  missed_value:        'Missed Value',
-  passive_play:        'Passive Play',
-  bad_preflop:         'Bad Preflop',
-  overpair_overplay:   'Overpair Overplay',
-  top_pair_overplay:   'Top Pair Overplay',
-  draw_chasing:        'Draw Chasing',
-  no_clear_leak:       'No Clear Leak',
-}
 
 // Read a preference stored by useLocalStorage (JSON-serialised)
 function getPref(key, fallback) {
@@ -357,111 +342,38 @@ function Bubble({ msg }) {
   )
 }
 
-// Progressive reveal of the Leak Profile — the moat. Encourages accumulation
-// before 5 hands, then reveals the recurring leaks and (for anonymous users) the
-// "save your profile" account prompt. Framed by RESULT, never by usage quota.
-function LeakProgress({ nAnalyzed, leaks, isAnonymous, isPro, onCreateAccount, onUpgrade, linking }) {
+// Slim nudge in the Coach that points to the dedicated Leak Profile tab. Keeps the
+// chat uncluttered while preserving the in-flow discovery of the moat (the full
+// profile, teaser/Pro split, and CTAs now live in components/LeakProfile.jsx).
+function LeakNudge({ nAnalyzed, leaks, onOpen }) {
   if (nAnalyzed < 1) return null
+  const revealed = nAnalyzed >= 5 && leaks.length > 0
 
-  // Pre-reveal: still accumulating, or no recurring leak yet.
-  if (nAnalyzed < 5 || leaks.length === 0) {
-    const msg = nAnalyzed < 3
-      ? `Analyzed ${nAnalyzed} hand${nAnalyzed > 1 ? 's' : ''}. Your Leak Profile unlocks at 5 — keep pasting hands.`
-      : nAnalyzed < 5
-        ? `We're starting to see patterns. ${5 - nAnalyzed} more hand${5 - nAnalyzed > 1 ? 's' : ''} to reveal your biggest leak.`
-        : `Analyzed ${nAnalyzed} hands — no leaks found yet, solid play. Keep going.`
+  if (!revealed) {
+    const left = Math.max(0, 5 - nAnalyzed)
+    const msg = left > 0
+      ? `${nAnalyzed}/5 hands — Leak Profile unlocks at 5.`
+      : `No leaks found yet — solid play. Keep analyzing.`
     return (
-      <div style={{ marginTop:'8px', padding:'12px 14px', borderRadius:'12px', background:C.surface, border:`1px solid ${C.border}`, display:'flex', gap:'10px', alignItems:'center' }}>
-        <TrendingDown size={16} color={C.secondary} style={{ flexShrink:0 }} />
-        <div style={{ fontSize:'0.74rem', color:C.textMuted, lineHeight:1.5 }}>{msg}</div>
+      <div onClick={onOpen} style={{ marginTop:'8px', padding:'10px 14px', borderRadius:'10px', background:C.surface, border:`1px solid ${C.border}`, display:'flex', gap:'10px', alignItems:'center', cursor:'pointer' }}>
+        <TrendingDown size={15} color={C.secondary} style={{ flexShrink:0 }} />
+        <span style={{ fontSize:'0.74rem', color:C.textMuted, flex:1 }}>{msg}</span>
+        <ChevronRight size={15} color={C.textMuted} />
       </div>
     )
   }
 
-  const top = leaks.slice(0, 3)
   const nRecurring = leaks.filter(l => l.recurring).length
-  // Teaser vs full (Hướng A, PROJECT/PRICING.md): Pro sees every leak + exact $.
-  // Free sees leak #1's NAME (the hook — "you're losing money on River Calling")
-  // but the $ amount is masked and leaks #2/#3 are locked. The moat is visible
-  // enough to want, hidden enough to pay for.
-  const topLeak = top[0]
-  const moreCount = leaks.length - 1
   return (
-    <div style={{ marginTop:'8px', padding:'14px', borderRadius:'12px', background:C.surface, border:`1px solid ${C.primaryBorder}`, display:'flex', flexDirection:'column', gap:'10px' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-        <TrendingDown size={16} color={C.primary} />
-        <span style={{ fontSize:'0.8rem', fontWeight:800, color:C.text, letterSpacing:'-0.01em' }}>Your Leak Profile</span>
-        <span style={{ marginLeft:'auto', fontSize:'0.62rem', color:C.textMuted }}>{nAnalyzed} hands</span>
+    <div onClick={onOpen} style={{ marginTop:'8px', padding:'12px 14px', borderRadius:'10px', background:C.surface, border:`1px solid ${C.primaryBorder}`, display:'flex', gap:'10px', alignItems:'center', cursor:'pointer' }}>
+      <TrendingDown size={16} color={C.primary} style={{ flexShrink:0 }} />
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize:'0.78rem', fontWeight:700, color:C.text }}>Your Leak Profile</div>
+        <div style={{ fontSize:'0.68rem', color:C.textMuted }}>
+          {leaks.length} leak{leaks.length>1?'s':''} found{nRecurring > 0 ? ` · ${nRecurring} recurring` : ''} — tap to view
+        </div>
       </div>
-
-      {/* Pro: full ranked list with exact $. */}
-      {isPro && top.map((l, i) => (
-        <div key={l.category} style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-          <span style={{ fontSize:'0.62rem', fontWeight:700, color:C.textMuted, width:'12px' }}>{i + 1}</span>
-          <span style={{ fontSize:'0.78rem', fontWeight:600, color:C.text, flex:1 }}>{LEAK_LABELS[l.category] || l.category}</span>
-          <span style={{ fontSize:'0.58rem', fontWeight: l.recurring ? 700 : 400, color: l.recurring ? C.primary : C.textMuted }}>
-            {l.recurring ? `×${l.count} recurring` : `${l.count} hand`}
-          </span>
-          <span style={{ fontSize:'0.85rem', fontWeight:700, color:C.red, fontVariantNumeric:'tabular-nums', minWidth:'54px', textAlign:'right' }}>
-            -${Math.abs(Math.round(l.totalEv))}
-          </span>
-        </div>
-      ))}
-
-      {/* Free: teaser — leak #1 name visible, $ masked. */}
-      {!isPro && topLeak && (
-        <>
-          <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-            <span style={{ fontSize:'0.62rem', fontWeight:700, color:C.textMuted, width:'12px' }}>1</span>
-            <span style={{ fontSize:'0.78rem', fontWeight:600, color:C.text, flex:1 }}>{LEAK_LABELS[topLeak.category] || topLeak.category}</span>
-            <span style={{ fontSize:'0.58rem', fontWeight: topLeak.recurring ? 700 : 400, color: topLeak.recurring ? C.primary : C.textMuted }}>
-              {topLeak.recurring ? `×${topLeak.count} recurring` : `${topLeak.count} hand`}
-            </span>
-            <span style={{ fontSize:'0.85rem', fontWeight:700, color:C.red, fontVariantNumeric:'tabular-nums', minWidth:'54px', textAlign:'right', display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'3px' }}>
-              <Lock size={11} color={C.red} />••
-            </span>
-          </div>
-          {moreCount > 0 && (
-            <div style={{ display:'flex', alignItems:'center', gap:'8px', opacity:0.6 }}>
-              <Lock size={12} color={C.textMuted} style={{ marginLeft:'1px' }} />
-              <span style={{ fontSize:'0.72rem', color:C.textMuted, fontStyle:'italic' }}>
-                +{moreCount} more leak{moreCount > 1 ? 's' : ''} found — unlock to see all
-              </span>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* CTA — one ask at a time, in funnel order: save account first, then Pro.
-          Pro users get nothing here (they already see everything). */}
-      {!isPro && isAnonymous && (
-        <div style={{ marginTop:'4px', padding:'12px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}`, display:'flex', flexDirection:'column', gap:'8px' }}>
-          <div style={{ fontSize:'0.74rem', color:C.text, lineHeight:1.5, display:'flex', gap:'6px', alignItems:'flex-start' }}>
-            <Lock size={13} color={C.primary} style={{ marginTop:'2px', flexShrink:0 }} />
-            <span>{nRecurring > 0
-              ? `We've found ${nRecurring} recurring leak${nRecurring > 1 ? 's' : ''} costing you money. Create a free account to save your Leak Profile.`
-              : `Your Leak Profile is building — ${leaks.length} leak${leaks.length > 1 ? 's' : ''} so far. Create a free account to save it.`}</span>
-          </div>
-          <button onClick={onCreateAccount} disabled={linking}
-            style={{ padding:'9px 14px', borderRadius:'9px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontSize:'0.74rem', fontWeight:800, cursor: linking ? 'not-allowed' : 'pointer' }}>
-            {linking ? 'Connecting…' : 'Create free account →'}
-          </button>
-        </div>
-      )}
-      {!isPro && !isAnonymous && (
-        <div style={{ marginTop:'4px', padding:'12px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}`, display:'flex', flexDirection:'column', gap:'8px' }}>
-          <div style={{ fontSize:'0.74rem', color:C.text, lineHeight:1.5, display:'flex', gap:'6px', alignItems:'flex-start' }}>
-            <Lock size={13} color={C.primary} style={{ marginTop:'2px', flexShrink:0 }} />
-            <span>{nRecurring > 0
-              ? `${nRecurring} recurring leak${nRecurring > 1 ? 's are' : ' is'} costing you money. Unlock the exact $ amounts and a fix plan for each.`
-              : `Unlock the exact $ cost of every leak and a step-by-step fix plan.`}</span>
-          </div>
-          <button onClick={onUpgrade}
-            style={{ padding:'9px 14px', borderRadius:'9px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontSize:'0.74rem', fontWeight:800, cursor:'pointer' }}>
-            Unlock full Leak Profile →
-          </button>
-        </div>
-      )}
+      <ChevronRight size={16} color={C.primary} />
     </div>
   )
 }
@@ -478,20 +390,7 @@ River A. UTG suddenly jams all-in for $250 into me. What should I do?`
 
 export default function AICoach({ preloadedHand, onHandConsumed }) {
   const { updateHand, addHand, hands } = useData()
-  const { isAnonymous, linkGoogle } = useAuth()
-  const { isPro, refresh: refreshPro } = usePro()
-  const [showPaywall, setShowPaywall] = useState(false)
-
-  // Returning from Stripe Checkout (success_url = /coach?checkout=success): the
-  // webhook may have just granted Pro, so re-read entitlement and clean the URL.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('checkout') === 'success') {
-      refreshPro()
-      setShowPaywall(false)
-      window.history.replaceState({}, '', window.location.pathname)
-    }
-  }, [refreshPro])
+  const navigate = useNavigate()
   const [messages,    setMessages]   = useLocalStorage('aicoach-messages', [])
   const [input,       setInput]      = useState('')
   const [playerType,  setPlayerType] = useState('Unknown')
@@ -502,7 +401,6 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   // Deterministic "instant read" shown WHILE Gemini thinks — fills latency and
   // proves we parsed the cards right (the correctness moat) before the LLM returns.
   const [instantRead, setInstantRead] = useState(null)
-  const [linking,     setLinking]     = useState(false)
   const bottomRef     = useRef(null)
   const inputRef      = useRef(null)
   // Ref always reflects the latest loadedHand — avoids stale closures in async callbacks
@@ -725,7 +623,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     } finally {
       setLoading(false)
     }
-  }, [input, loading, messages, playerType, isPro])
+  }, [input, loading, messages, playerType])
 
   // Build prompt from preloaded hand and trigger analysis
   const handleAnalyzeHand = useCallback(() => {
@@ -756,7 +654,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
 
     console.log('[coach] Prompt:', prompt)
     sendMessage(prompt, true, handEval)
-  }, [loadedHand, extraNotes, loading, playerType, sendMessage, isPro])
+  }, [loadedHand, extraNotes, loading, playerType, sendMessage])
 
   // Main composer send. The FIRST message (no preloaded hand, empty thread) is
   // treated as a HAND to analyze → structured analysis path (Mistake/EV/Better line),
@@ -798,14 +696,6 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   // Leak profile drives the progressive reveal (hands accumulate across the session).
   const nAnalyzed = useMemo(() => analyzedCount(hands), [hands])
   const leaks     = useMemo(() => computeLeaks(hands),  [hands])
-
-  const handleCreateAccount = useCallback(async () => {
-    setLinking(true)
-    setError('')
-    const { error } = await linkGoogle()
-    if (error) { setLinking(false); setError(error.message) }
-    // on success the browser redirects to Google and back
-  }, [linkGoogle])
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100%', background:C.bg, fontFamily:"'Inter',sans-serif" }}>
@@ -966,14 +856,10 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           </div>
         )}
 
-        <LeakProgress
+        <LeakNudge
           nAnalyzed={nAnalyzed}
           leaks={leaks}
-          isAnonymous={isAnonymous}
-          isPro={isPro}
-          onCreateAccount={handleCreateAccount}
-          onUpgrade={() => setShowPaywall(true)}
-          linking={linking}
+          onOpen={() => navigate('/leaks')}
         />
 
         <div ref={bottomRef} />
@@ -1018,13 +904,6 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           </button>
         </div>
       </div>
-
-      {showPaywall && (
-        <Paywall
-          onClose={() => setShowPaywall(false)}
-          onRestore={refreshPro}
-        />
-      )}
 
       <style>{`@keyframes pulse { 0%,80%,100%{transform:scale(0.5);opacity:0.3} 40%{transform:scale(1);opacity:1} }`}</style>
     </div>

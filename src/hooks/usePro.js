@@ -11,14 +11,19 @@ import { supabase } from '../lib/supabase'
 //
 // Mobile (phase 2): swap the query below for the RevenueCat entitlement check
 // (`customerInfo.entitlements.active['pro']`), keeping this shape unchanged.
+// Module-level cache so navigating back to a Pro-gated screen doesn't flash the
+// non-Pro view for ~300ms while Supabase is re-queried. First load still resolves
+// from the network; after that, mounts start from the last known value.
+let proCache = { value: false, known: false }
+
 export function usePro() {
-  const [isPro, setIsPro]     = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [isPro, setIsPro]     = useState(proCache.value)
+  const [loading, setLoading] = useState(!proCache.known)
 
   const refresh = useCallback(async () => {
-    setLoading(true)
+    if (!proCache.known) setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setIsPro(false); setLoading(false); return }
+    if (!user) { proCache = { value: false, known: true }; setIsPro(false); setLoading(false); return }
 
     const { data } = await supabase
       .from('subscriptions')
@@ -28,7 +33,9 @@ export function usePro() {
 
     const active     = !!data && ['active', 'trialing'].includes(data.status)
     const notExpired = !data?.current_period_end || new Date(data.current_period_end) > new Date()
-    setIsPro(active && notExpired)
+    const result = active && notExpired
+    proCache = { value: result, known: true }
+    setIsPro(result)
     setLoading(false)
   }, [])
 

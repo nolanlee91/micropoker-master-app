@@ -6,6 +6,7 @@ import HandHistory from './components/HandHistory'
 import AICoach from './components/AICoach'
 import OddsCalculator from './components/OddsCalculator'
 import BankrollManager from './components/BankrollManager'
+import LeakProfile from './components/LeakProfile'
 import Quiz from './components/Quiz'
 import LoginScreen from './components/LoginScreen'
 import MigratePrompt from './components/MigratePrompt'
@@ -48,6 +49,7 @@ function AppRoutes() {
         <Route path="/" element={<Navigate to="/coach" replace />} />
         <Route path="/history"  element={<HandHistory onAnalyze={hand => setAnalyzingHand(hand)} />} />
         <Route path="/bankroll" element={<BankrollManager />} />
+        <Route path="/leaks"    element={<LeakProfile />} />
         <Route path="/odds"     element={<OddsCalculator />} />
         <Route path="/quiz"     element={<Quiz />} />
         <Route path="/coach"    element={<AICoach preloadedHand={analyzingHand} onHandConsumed={() => setAnalyzingHand(null)} />} />

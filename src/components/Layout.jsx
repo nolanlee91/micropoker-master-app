@@ -164,7 +164,9 @@ function RefreshSpinner({ spinning, angle, ready }) {
   )
 }
 
-const PTR_THRESHOLD = 70   // px (damped) the user must pull to trigger a refresh
+const PTR_THRESHOLD = 76   // px (damped) the user must pull to trigger a refresh
+const PTR_MAX       = 130  // hard cap on how far the content can be dragged
+const PTR_RESIST    = 130  // higher = stiffer spring (must pull deeper to move)
 
 export default function Layout({ children }) {
   const { session, signOut } = useAuth()
@@ -203,7 +205,11 @@ export default function Layout({ children }) {
     if (!ptr.current.active || refreshing) return
     const dy = e.touches[0].clientY - ptr.current.startY
     if (dy <= 0) { setPull(0); return }
-    setPull(Math.min(dy * 0.5, 95))   // damped so it feels rubbery
+    // Rubber-band resistance: each extra pixel of finger travel moves the content
+    // less than the last, so it feels like pulling against a spring that fights
+    // back — and you have to pull deliberately deep (~180px) to cross the threshold.
+    const damped = PTR_MAX * (1 - 1 / (dy / PTR_RESIST + 1))
+    setPull(damped)
   }
   const onTouchEnd = async () => {
     if (!ptr.current.active) return

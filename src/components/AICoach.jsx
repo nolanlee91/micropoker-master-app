@@ -660,8 +660,12 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   // treated as a HAND to analyze → structured analysis path (Mistake/EV/Better line),
   // with a best-effort deterministic read shown instantly. Later messages are
   // follow-up chat on that hand.
-  const handleSend = useCallback(() => {
-    const text = input.trim()
+  const handleSend = useCallback((override) => {
+    // `override` lets callers analyze a specific hand in one click (e.g. the
+    // "Try this example" button) without round-tripping through input state.
+    // Guarded by typeof so onClick={handleSend} (which passes an event) still
+    // falls back to the composer text.
+    const text = (typeof override === 'string' ? override : input).trim()
     if (!text || loading) return
     const { hole, board } = extractCardsFromText(text)
     // Treat as a NEW hand to analyze — not just the first message, but ANY message
@@ -805,17 +809,24 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
             <div style={{ fontSize:'0.78rem', color:C.textMuted, textAlign:'center', maxWidth:'280px', lineHeight:1.55 }}>
               Paste a hand history or just tell the story below — online or live. Get your biggest mistake and a better line in seconds.
             </div>
+            {/* One click → instant analysis. The fastest path to the "aha" for a
+                first-timer who has no hand of their own to paste yet. */}
             <button
-              onClick={() => setInput(EXAMPLE_HAND)}
+              onClick={() => handleSend(EXAMPLE_HAND)}
+              disabled={loading}
               style={{
-                marginTop:'4px', padding:'9px 16px', borderRadius:'10px',
-                border:`1px solid ${C.primaryBorder}`, background:C.primaryDim,
-                color:C.primary, fontSize:'0.76rem', fontWeight:700, cursor:'pointer',
-                display:'flex', alignItems:'center', gap:'6px', transition:'all 0.15s',
+                marginTop:'6px', padding:'12px 20px', borderRadius:'11px', border:'none',
+                background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e',
+                fontSize:'0.82rem', fontWeight:800, cursor: loading ? 'wait' : 'pointer',
+                display:'flex', alignItems:'center', gap:'7px',
+                boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 16px rgba(84,233,138,0.25)',
               }}
             >
-              Try this example →
+              <BrainCircuit size={15} /> {loading ? 'Analyzing…' : 'See an example analysis →'}
             </button>
+            <div style={{ fontSize:'0.66rem', color:C.textMuted, opacity:0.7 }}>
+              Instant · no signup needed
+            </div>
           </div>
         )}
 

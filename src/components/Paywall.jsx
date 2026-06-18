@@ -1,26 +1,47 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { BrainCircuit, Check, X } from 'lucide-react'
+import { startCheckout } from '../lib/checkout'
 
-// Paywall shown when a free user tries to use a Pro feature (AI Coach).
+// Paywall for Pro (the Leak Profile). Real billing via Stripe Checkout — the
+// button redirects to Stripe's hosted page; the webhook grants Pro on success.
 //
-// NOTE: `onUpgrade` is a placeholder. Until the app is packaged natively, there
-// is no real in-app purchase, so the caller currently grants Pro locally for
-// testing. Before store submission, wire `onUpgrade` to the real purchase flow
-// (RevenueCat / StoreKit / Play Billing) and add a "Restore purchases" action.
-
+// Display prices below are COPY ONLY — the charge is whatever the Stripe Price
+// (STRIPE_PRICE_MONTHLY / STRIPE_PRICE_ANNUAL) is set to. Keep them in sync.
+// Phase 2 (native): swap startCheckout for RevenueCat and add a real
+// "Restore purchases" that re-reads the store entitlement.
 const C = {
   surface:'#161B22', surfaceHi:'#1E2530', border:'#21262D',
-  text:'#E6EDF3', textMuted:'#7D8590', primary:'#54e98a', secondary:'#92ccff',
+  text:'#E6EDF3', textMuted:'#7D8590', primary:'#54e98a', secondary:'#92ccff', red:'#f47067',
 }
 
 const PERKS = [
-  'Unlimited AI hand analysis',
-  'Leak detection & EV impact',
-  'Follow-up coaching questions',
-  'Multi-language explanations',
+  'Full Leak Profile — every leak ranked by $ lost',
+  'Exact $ cost per leak (not blurred)',
+  'Step-by-step fix plan for each leak',
+  'Deep follow-up coaching on your leaks',
+  'Watch your leaks shrink over time',
 ]
 
-export default function Paywall({ onUpgrade, onClose }) {
+const PLANS = {
+  monthly: { label: 'Monthly', price: '$9.99', cadence: '/mo',   note: '' },
+  annual:  { label: 'Annual',  price: '$83.99', cadence: '/yr',  note: 'Save 30% — $6.99/mo' },
+}
+
+export default function Paywall({ onClose, onRestore }) {
+  const [plan,    setPlan]    = useState('monthly')
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState('')
+
+  const upgrade = async () => {
+    setLoading(true); setError('')
+    try {
+      await startCheckout(plan)   // redirects to Stripe on success
+    } catch (e) {
+      setError(e.message || 'Checkout failed.')
+      setLoading(false)
+    }
+  }
+
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.78)', backdropFilter:'blur(6px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:600, padding:'18px' }}>
       <div style={{ width:'100%', maxWidth:'360px', background:C.surface, border:`1px solid ${C.border}`, borderRadius:'16px', padding:'22px', display:'flex', flexDirection:'column', gap:'16px', position:'relative' }}>
@@ -32,9 +53,9 @@ export default function Paywall({ onUpgrade, onClose }) {
           <div style={{ width:'52px', height:'52px', borderRadius:'14px', background:'linear-gradient(135deg,#aadaff,#92ccff,#5aabf5)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 0 20px rgba(146,204,255,0.3)' }}>
             <BrainCircuit size={26} color="#071525" />
           </div>
-          <div style={{ fontSize:'1.15rem', fontWeight:700, color:C.text }}>Unlock AI Coach Pro</div>
+          <div style={{ fontSize:'1.15rem', fontWeight:700, color:C.text }}>Unlock your Leak Profile</div>
           <div style={{ fontSize:'0.8rem', color:C.textMuted, lineHeight:1.5 }}>
-            Get instant, GTO-aware analysis of every hand you play.
+            See exactly which leaks cost you the most — and how to fix them.
           </div>
         </div>
 
@@ -49,17 +70,45 @@ export default function Paywall({ onUpgrade, onClose }) {
           ))}
         </div>
 
-        <button onClick={onUpgrade} style={{
+        {/* Plan toggle */}
+        <div style={{ display:'flex', gap:'8px' }}>
+          {Object.entries(PLANS).map(([key, p]) => {
+            const active = plan === key
+            return (
+              <button key={key} onClick={() => setPlan(key)} style={{
+                flex:1, padding:'10px 8px', borderRadius:'10px', cursor:'pointer', textAlign:'center',
+                background: active ? 'rgba(84,233,138,0.10)' : C.surfaceHi,
+                border: `1.5px solid ${active ? C.primary : C.border}`,
+                display:'flex', flexDirection:'column', gap:'2px',
+              }}>
+                <span style={{ fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase', color: active ? C.primary : C.textMuted }}>{p.label}</span>
+                <span style={{ fontSize:'1rem', fontWeight:800, color:C.text }}>{p.price}<span style={{ fontSize:'0.66rem', fontWeight:400, color:C.textMuted }}>{p.cadence}</span></span>
+                {p.note ? <span style={{ fontSize:'0.56rem', color:C.primary, fontWeight:600 }}>{p.note}</span> : null}
+              </button>
+            )
+          })}
+        </div>
+
+        {error && (
+          <div style={{ fontSize:'0.74rem', color:C.red, textAlign:'center' }}>{error}</div>
+        )}
+
+        <button onClick={upgrade} disabled={loading} style={{
           width:'100%', padding:'14px', borderRadius:'10px', border:'none',
           background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e',
-          fontSize:'0.92rem', fontWeight:700, cursor:'pointer',
+          fontSize:'0.92rem', fontWeight:700, cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1,
           boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 16px rgba(84,233,138,0.25)',
         }}>
-          Upgrade to Pro
+          {loading ? 'Redirecting…' : `Upgrade — ${PLANS[plan].price}${PLANS[plan].cadence}`}
         </button>
 
-        <div style={{ fontSize:'0.6rem', color:C.textMuted, textAlign:'center', opacity:0.7 }}>
-          Placeholder — in-app purchase wired before store launch.
+        <div style={{ display:'flex', justifyContent:'center', gap:'14px', fontSize:'0.66rem', color:C.textMuted }}>
+          {onRestore && (
+            <button onClick={onRestore} style={{ background:'none', border:'none', color:C.secondary, cursor:'pointer', fontSize:'0.66rem' }}>
+              Restore purchase
+            </button>
+          )}
+          <span style={{ opacity:0.7 }}>Cancel anytime</span>
         </div>
       </div>
     </div>

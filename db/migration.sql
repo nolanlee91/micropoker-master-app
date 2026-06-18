@@ -93,6 +93,31 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
+-- ── 4b. Subscriptions (Stripe — Pro entitlement) ─────────────
+-- Source of truth for Pro. Written ONLY by the Stripe webhook using the
+-- service-role key (which bypasses RLS). Authenticated users can READ their own
+-- row but have NO write policy — so Pro can never be self-granted from the client.
+create table if not exists subscriptions (
+  user_id                uuid primary key references auth.users(id) on delete cascade,
+  stripe_customer_id     text,
+  stripe_subscription_id text,
+  status                 text,          -- active | trialing | past_due | canceled | unpaid | incomplete
+  price_id               text,
+  current_period_end     timestamptz,
+  cancel_at_period_end   boolean not null default false,
+  updated_at             timestamptz not null default now()
+);
+
+alter table subscriptions enable row level security;
+
+-- Read-only for the owner. Intentionally NO insert/update/delete policy:
+-- the webhook writes via the service-role key, which bypasses RLS entirely.
+create policy "subscriptions_read_own" on subscriptions
+  for select using (auth.uid() = user_id);
+
+-- Webhook maps a Stripe customer back to a user — index that lookup.
+create index if not exists subscriptions_customer_idx on subscriptions (stripe_customer_id);
+
 -- ── 5. Account deletion (required by the App Store) ──────────
 -- Lets a signed-in user permanently delete their own account.
 -- Deleting the auth.users row cascades to profiles, sessions and

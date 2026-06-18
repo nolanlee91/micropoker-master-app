@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MicroPoker Master — Audit Dashboard</title>
+<style>
+  :root{
+    --bg:#0B0E14; --surface:#161B22; --surfaceHi:#1E2530; --border:#21262D;
+    --text:#E6EDF3; --muted:#7D8590; --primary:#54e98a; --blue:#92ccff;
+    --accent:#ffc0ac; --red:#f47067;
+    --p0:#f47067; --p1:#ffb347; --p2:#92ccff; --p3:#7D8590;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.5;
+    padding:24px 16px 80px;max-width:1000px;margin:0 auto;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:0.85em;
+    background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px}
+
+  header{margin-bottom:24px}
+  h1{font-size:1.5rem;font-weight:700;letter-spacing:-0.02em;display:flex;align-items:center;gap:10px}
+  .sub{color:var(--muted);font-size:0.82rem;margin-top:4px}
+
+  /* Verdict card */
+  .verdict{
+    background:var(--surface);border:1px solid var(--border);border-radius:14px;
+    padding:18px 20px;margin:20px 0;display:grid;gap:8px;
+  }
+  .verdict-row{display:flex;justify-content:space-between;align-items:center;gap:12px;
+    font-size:0.88rem;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
+  .verdict-row:last-child{border-bottom:none}
+  .verdict-row .v{font-weight:700}
+  .yes{color:var(--primary)} .no{color:var(--red)}
+
+  /* Progress summary */
+  .progress-wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:20px 0}
+  .pcard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px}
+  .pcard .ptitle{font-size:0.62rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+    color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between}
+  .pbar{height:8px;border-radius:4px;background:rgba(255,255,255,0.06);overflow:hidden}
+  .pbar > div{height:100%;border-radius:4px;transition:width .4s ease}
+  .pcard .pcount{font-size:0.72rem;color:var(--muted);margin-top:6px;font-variant-numeric:tabular-nums}
+
+  /* Filter bar */
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
+  .filters button{background:var(--surfaceHi);border:1px solid var(--border);color:var(--muted);
+    font-size:0.74rem;font-weight:600;padding:6px 12px;border-radius:8px;cursor:pointer;transition:.15s}
+  .filters button.active{background:var(--primary);color:#061a0e;border-color:var(--primary)}
+
+  /* Section */
+  .section{margin:28px 0 12px}
+  .section h2{font-size:1.05rem;font-weight:700;display:flex;align-items:center;gap:8px}
+
+  /* Item card */
+  .item{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--p3);
+    border-radius:10px;padding:14px 16px;margin-bottom:10px;transition:.2s}
+  .item.p0{border-left-color:var(--p0)} .item.p1{border-left-color:var(--p1)}
+  .item.p2{border-left-color:var(--p2)} .item.p3{border-left-color:var(--p3)}
+  .item.ok{border-left-color:var(--primary)}
+  .item.done{opacity:0.55}
+  .item.done .ititle{text-decoration:line-through;text-decoration-color:var(--muted)}
+  .item-head{display:flex;align-items:flex-start;gap:12px}
+  .chk{width:22px;height:22px;flex-shrink:0;margin-top:2px;cursor:pointer;accent-color:var(--primary)}
+  .item-body{flex:1;min-width:0}
+  .ititle{font-size:0.95rem;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .badge{font-size:0.58rem;font-weight:800;letter-spacing:0.06em;padding:2px 7px;border-radius:5px;
+    text-transform:uppercase}
+  .badge.p0{background:rgba(244,112,103,0.15);color:var(--p0)}
+  .badge.p1{background:rgba(255,179,71,0.15);color:var(--p1)}
+  .badge.p2{background:rgba(146,204,255,0.15);color:var(--p2)}
+  .badge.p3{background:rgba(125,133,144,0.15);color:var(--p3)}
+  .badge.ok{background:rgba(84,233,138,0.15);color:var(--primary)}
+  .desc{font-size:0.84rem;color:#c9d1d9;margin-top:8px}
+  .desc .lbl{color:var(--muted);font-weight:600}
+  .meta{font-size:0.78rem;color:var(--muted);margin-top:8px;display:flex;flex-direction:column;gap:4px}
+  .fix{font-size:0.82rem;color:var(--primary);margin-top:8px;background:rgba(84,233,138,0.06);
+    border:1px solid rgba(84,233,138,0.15);border-radius:8px;padding:8px 10px}
+  .controls{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+  select{background:var(--surfaceHi);color:var(--text);border:1px solid var(--border);
+    border-radius:7px;padding:5px 8px;font-size:0.76rem;font-family:inherit;cursor:pointer}
+  .notes{width:100%;background:var(--surfaceHi);color:var(--text);border:1px solid var(--border);
+    border-radius:7px;padding:8px 10px;font-size:0.78rem;font-family:inherit;margin-top:8px;resize:vertical;min-height:38px}
+  .notes::placeholder{color:var(--muted)}
+
+  .status-pill{font-size:0.6rem;font-weight:800;letter-spacing:0.06em;padding:2px 8px;border-radius:20px;text-transform:uppercase}
+  .st-TODO{background:rgba(125,133,144,0.18);color:var(--muted)}
+  .st-INPROGRESS{background:rgba(255,179,71,0.18);color:var(--p1)}
+  .st-DONE{background:rgba(84,233,138,0.18);color:var(--primary)}
+  .st-WONTFIX{background:rgba(244,112,103,0.18);color:var(--red)}
+
+  .strengths{background:rgba(84,233,138,0.05);border:1px solid rgba(84,233,138,0.18);
+    border-radius:12px;padding:16px 18px;margin-top:24px}
+  .strengths h3{font-size:0.95rem;color:var(--primary);margin-bottom:10px}
+  .strengths ul{list-style:none;display:grid;gap:8px}
+  .strengths li{font-size:0.82rem;padding-left:20px;position:relative}
+  .strengths li::before{content:'✓';position:absolute;left:0;color:var(--primary);font-weight:700}
+
+  footer{margin-top:32px;text-align:center;color:var(--muted);font-size:0.72rem}
+  .reset{background:none;border:1px solid var(--border);color:var(--muted);font-size:0.68rem;
+    padding:5px 12px;border-radius:7px;cursor:pointer;margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔍 MicroPoker Master — Audit</h1>
+  <div class="sub">Góc nhìn người chơi micro-stakes · "Sẵn sàng thu phí chưa?" · Tạo 2026-06-17</div>
+</header>
+
+<div class="verdict">
+  <div class="verdict-row"><span>Sẽ tải &amp; dùng <b>free</b>?</span><span class="v yes">✅ Có</span></div>
+  <div class="verdict-row"><span>Trả tiền <b>ngay hôm nay</b>?</span><span class="v no">❌ Chưa</span></div>
+  <div class="verdict-row"><span>Mức sẵn sàng trả nếu fix xong</span><span class="v" style="color:var(--accent)">~$5–8/tháng</span></div>
+  <div class="verdict-row"><span>Điều kiện "rút ví"</span><span class="v">Xong toàn bộ 🔴 P0</span></div>
+</div>
+
+<div class="progress-wrap" id="progress"></div>
+
+<div class="filters" id="filters">
+  <button data-f="all" class="active">Tất cả</button>
+  <button data-f="p0">🔴 P0</button>
+  <button data-f="p1">🟠 P1</button>
+  <button data-f="p2">🟡 P2</button>
+  <button data-f="p3">⚪ P3</button>
+  <button data-f="open">Chưa xong</button>
+</div>
+
+<div id="items"></div>
+
+<div class="strengths">
+  <h3>✅ Điểm mạnh đã ghi nhận — giữ nguyên, đừng phá</h3>
+  <ul>
+    <li><b>AI Coach không bịa bài:</b> hand strength tính deterministic rồi ép model copy → chặn đúng lỗi ChatGPT hay đọc sai bài. <code>coach.js:179-185</code>, <code>handEvaluator.js</code>. Đây là USP.</li>
+    <li><b>Leak tracking = moat:</b> cộng dồn EV mất qua nhiều hand, xếp hạng lỗi tốn tiền nhất, gắn <code>recurring</code> ≥2 hand. <code>leaks.js</code>.</li>
+    <li><b>EV impact bằng tiền thật</b>, grounded theo pot/bet thật. <code>coach.js:172-176</code>.</li>
+    <li><b>Bảo mật:</b> Gemini key server-side, <code>/api/coach</code> yêu cầu Supabase session hợp lệ. <code>coach.js:11-27</code>.</li>
+    <li><b>RLS Supabase:</b> mỗi user chỉ thấy data của mình.</li>
+  </ul>
+</div>
+
+<footer>
+  Trạng thái lưu tự động trong trình duyệt (localStorage). Mở cùng file = thấy lại tiến độ.<br>
+  <button class="reset" onclick="if(confirm('Xoá toàn bộ trạng thái đã lưu?')){localStorage.removeItem(STORE);location.reload()}">↺ Reset toàn bộ</button>
+</footer>
+
+<script>
+const STORE = 'mpm-audit-v1';
+const ITEMS = [
+  { id:'P0-1', sev:'p0', done:true, status:'DONE', notes:'Đã code 2026-06-17 (Phase 1 = Stripe web; $9.99/mo + $83.99/yr; không trial). Build pass. CÒN CHỜ BẠN: tạo Stripe account/product, đặt env vars, chạy migration, cấu hình webhook — xem SETUP-STRIPE.md.', title:'Thanh toán thật — Stripe web (Phase 1)',
+    desc:'ĐÃ CODE: bảng subscriptions (chỉ webhook ghi); api/create-checkout-session.js + api/stripe-webhook.js (verify chữ ký); usePro đọc Supabase (hết localStorage giả); Paywall toggle Tháng/Năm + giá + Restore; nối Checkout + xử lý ?checkout=success. CHỜ BẠN setup khóa/dashboard (SETUP-STRIPE.md). Phase 2 = RevenueCat native để sau.',
+    files:['db/migration.sql (bảng subscriptions)','api/create-checkout-session.js','api/stripe-webhook.js','src/hooks/usePro.js','src/lib/checkout.js','src/components/Paywall.jsx','SETUP-STRIPE.md (việc của bạn)'],
+    fix:'Code xong. Việc còn lại là cấu hình tài khoản — theo SETUP-STRIPE.md. Test bằng Stripe test mode (thẻ 4242…) trước khi bật live.' },
+  { id:'P0-2', sev:'p0', done:true, status:'DONE', notes:'Đã sửa 2026-06-17 (Hướng A, đơn vị $): viết lại Paywall PERKS + heading; tách LeakProgress teaser(free)/full(Pro) + nối setShowPaywall; CTA theo bậc funnel; sửa PRICING.md. Build pass.', title:'Ranh giới Free vs Pro — code chưa khớp model đã chốt',
+    desc:'Model ĐÃ định nghĩa trong PRICING.md (Free = phân tích hand không giới hạn; Pro = Leak Profile). Nhưng code nói ngược: (1) Paywall quảng cáo "Unlimited analysis" + "Multi-language" — giờ cả 2 đều FREE; (2) setShowPaywall KHÔNG được gọi ở đâu → cổng Pro là code chết; (3) LeakProgress cho free xem hết top 3 leak + EV — chính cái đáng bán đang miễn phí; (4) PRICING.md dòng 33 còn sót thông điệp cũ "5 câu/ngày".',
+    files:['Paywall.jsx:16-21 (PERKS sai)','AICoach.jsx:434 (setShowPaywall không gọi)','AICoach.jsx:383-401 (LeakProgress cho free xem hết)','PROJECT/PRICING.md:33 (mâu thuẫn)'],
+    fix:'QUYẾT ĐỊNH: Hướng A (teaser free, chi tiết Pro) + đơn vị $. Free thấy: tên leak #1 + số leak recurring, MỜ số tiền + KHÓA bảng đầy đủ/lộ trình sửa/follow-up. Việc: (1) viết lại PERKS; (2) tách LeakProgress teaser vs full + gọi setShowPaywall; (3) CTA theo bậc: anonymous→tạo account, account chưa Pro→Upgrade Pro; (4) sửa PRICING.md:33.' },
+
+  { id:'P1-1', sev:'p1', title:'Odds Calculator: 4,000 iterations quá ít, số bị "nhảy"',
+    desc:'Monte Carlo 4,000 vòng → sai số ~±0.7–0.8%. Tính 2 lần ra 2 số lệch → mất niềm tin. Turn/river chỉ còn ít tổ hợp, công cụ xịn enumerate chính xác ra số tròn.',
+    files:['OddsCalculator.jsx:71 (iters=4000)','OddsCalculator.jsx:376-390 (handleCalculate)'],
+    fix:'(a) Tăng iters ~20k–50k khi preflop/flop; (b) enumerate chính xác khi ≤2 lá còn thiếu; (c) làm tròn nhất quán.' },
+  { id:'P1-2', sev:'p1', title:'AI Coach dùng gemini-2.5-flash — nông ở spot phức tạp',
+    desc:'Flash rẻ (tốt cho chi phí) nhưng phân tích spot multi-street phức tạp đôi khi hời hợt. Người trả tiền kỳ vọng chất lượng "coach".',
+    files:['coach.js:214 (model id)','coach.js:226-230 (maxOutputTokens/temp)'],
+    fix:'Cân nhắc model mạnh hơn cho Pro tier, hoặc few-shot examples. Đo chất lượng trên 10–20 hand mẫu trước/sau.' },
+
+  { id:'P2-1', sev:'p2', title:'Chưa thấy onboarding "aha moment" nhanh',
+    desc:'Người chơi cần thấy giá trị trong <60s. Cần 1 hand mẫu phân tích sẵn để họ thấy ngay leak detection + EV hoạt động.',
+    files:['Onboarding.jsx'],
+    fix:'Demo hand được phân tích sẵn ngay onboarding.' },
+  { id:'P2-2', sev:'p2', title:'Trust signals trên Paywall',
+    desc:'Paywall thiếu social proof / "hủy bất cứ lúc nào" / dùng thử. Micro player rất ngại commit.',
+    files:['Paywall.jsx'],
+    fix:'Thêm free trial 7 ngày, dòng "Cancel anytime", có thể 1 testimonial.' },
+  { id:'P2-3', sev:'p2', title:'Đa ngôn ngữ là perk Pro — đã có sẵn ở free?',
+    desc:'Cần kiểm tra: multi-language (EN/VI/ZH) đang ở free hay Pro? Paywall liệt kê nó là perk Pro.',
+    files:['Paywall.jsx:20','coach.js:51-63','Layout.jsx (language pref)'],
+    fix:'Xác minh & đồng bộ gate với quảng cáo.' },
+
+  { id:'P3-1', sev:'p3', title:'Odds calc: cho nhập range cho villain',
+    desc:'Equilab cho range villain (không chỉ 2 lá cụ thể / random) — điểm người chơi nghiêm túc mong muốn.',
+    files:['OddsCalculator.jsx'],
+    fix:'Hỗ trợ nhập range % cho villain.' },
+  { id:'P3-2', sev:'p3', title:'Hand evaluator: thêm unit test',
+    desc:'Vì đây là "deterministic source of truth" cho AI Coach, rất đáng test edge cases (wheel straight, board pair, flush vs straight).',
+    files:['handEvaluator.js (chưa có test)'],
+    fix:'Thêm unit test cho các edge case chính.' },
+
+  { id:'OK-1', sev:'ok', title:'Stakes ĐÚNG — định vị LIVE CASH (không phải lỗi)',
+    desc:'Ban đầu reviewer giả định "micro = online cents (NL2–NL100)". Nhưng đối tượng là khán giả các kênh YouTube dạy LIVE CASH. Trong live, $1/$1, $1/$2, $1/$3 LÀ stakes thấp nhất (micro/low live) — $1/$2 là bàn entry-level ở hầu hết casino. Vậy STAKES_LIST hiện tại CHUẨN với đối tượng. Không cần sửa.',
+    files:['BankrollManager.jsx:15 (STAKES_LIST — giữ nguyên)'],
+    fix:'Không sửa stakes. Tùy chọn nhỏ: đảm bảo UI/marketing nói rõ "LIVE cash" để đúng khán giả tự nhận ra. ($5/$10 hơi trên "micro" nhưng giữ lại vô hại.)' },
+  { id:'OK-2', sev:'ok', title:'Quiz 9-max ĐÚNG cho live cash (không phải lỗi)',
+    desc:'Live cash $1/$2–$1/$3 hầu hết là bàn FULL RING 9 người. Nên range GTO 100bb 9-max hardcode là CHUẨN cho đối tượng live. (6-max chỉ là chuyện của online micro.)',
+    files:['Quiz.jsx (range 9-max — giữ nguyên)'],
+    fix:'Không sửa. Chỉ thêm 6-max nếu sau này mở rộng sang online micro.' },
+];
+const SEV_LABEL = {p0:'P0',p1:'P1',p2:'P2',p3:'P3',ok:'OK'};
+const STATUSES = ['TODO','IN PROGRESS','DONE','WONTFIX'];
+
+let state = JSON.parse(localStorage.getItem(STORE) || '{}');
+function save(){ localStorage.setItem(STORE, JSON.stringify(state)); }
+// Default state baked into the ITEM (git-tracked) unless the user overrode it in
+// localStorage. Lets the file itself record "already done" without needing a click.
+function get(id){
+  if(state[id]) return state[id];
+  const it = ITEMS.find(x=>x.id===id) || {};
+  return {done: !!it.done, status: it.status || 'TODO', notes: it.notes || ''};
+}
+
+let filter = 'all';
+
+function render(){
+  const wrap = document.getElementById('items');
+  wrap.innerHTML = '';
+  let lastSev = '';
+  const sevNames = {p0:'🔴 P0 — Chặn việc thu phí',p1:'🟠 P1 — Niềm tin & độ chính xác',p2:'🟡 P2 — Tăng chuyển đổi',p3:'⚪ P3 — Nice-to-have',ok:'✅ Đã xem xét — không phải lỗi (giữ nguyên)'};
+  ITEMS.forEach(it=>{
+    const s = get(it.id);
+    if(filter!=='all'){
+      if(filter==='open' && s.done) return;
+      if(filter!=='open' && filter!==it.sev) return;
+    }
+    if(it.sev!==lastSev){
+      lastSev=it.sev;
+      const h=document.createElement('div');h.className='section';
+      h.innerHTML=`<h2>${sevNames[it.sev]}</h2>`;wrap.appendChild(h);
+    }
+    const div=document.createElement('div');
+    div.className=`item ${it.sev}${s.done?' done':''}`;
+    const stClass = 'st-'+s.status.replace(' ','');
+    div.innerHTML=`
+      <div class="item-head">
+        <input type="checkbox" class="chk" ${s.done?'checked':''} data-id="${it.id}">
+        <div class="item-body">
+          <div class="ititle">
+            <span class="badge ${it.sev}">${SEV_LABEL[it.sev]}</span>
+            <span>${it.id} · ${it.title}</span>
+            <span class="status-pill ${stClass}">${s.status}</span>
+          </div>
+          <div class="desc">${it.desc}</div>
+          <div class="meta"><span class="lbl">📁 Files:</span>${it.files.map(f=>`<span>• <code>${f}</code></span>`).join('')}</div>
+          <div class="fix">💡 ${it.fix}</div>
+          <div class="controls">
+            <label style="font-size:.74rem;color:var(--muted)">Status:</label>
+            <select data-id="${it.id}">${STATUSES.map(st=>`<option ${st===s.status?'selected':''}>${st}</option>`).join('')}</select>
+          </div>
+          <textarea class="notes" data-id="${it.id}" placeholder="Notes / commit hash…">${s.notes||''}</textarea>
+        </div>
+      </div>`;
+    wrap.appendChild(div);
+  });
+  bind();
+  renderProgress();
+}
+
+function bind(){
+  document.querySelectorAll('.chk').forEach(c=>c.onchange=e=>{
+    const id=e.target.dataset.id;const s=get(id);
+    s.done=e.target.checked; if(s.done && s.status!=='WONTFIX') s.status='DONE';
+    else if(!s.done && s.status==='DONE') s.status='TODO';
+    state[id]=s;save();render();
+  });
+  document.querySelectorAll('select[data-id]').forEach(sel=>sel.onchange=e=>{
+    const id=e.target.dataset.id;const s=get(id);
+    s.status=e.target.value; s.done=(s.status==='DONE');
+    state[id]=s;save();render();
+  });
+  document.querySelectorAll('textarea[data-id]').forEach(t=>t.onblur=e=>{
+    const id=e.target.dataset.id;const s=get(id);s.notes=e.target.value;state[id]=s;save();
+  });
+}
+
+function renderProgress(){
+  const groups={p0:[],p1:[],p2:[],p3:[]};
+  ITEMS.forEach(it=>groups[it.sev].push(it));
+  const colors={p0:'var(--p0)',p1:'var(--p1)',p2:'var(--p2)',p3:'var(--p3)'};
+  const names={p0:'🔴 P0',p1:'🟠 P1',p2:'🟡 P2',p3:'⚪ P3'};
+  let html='';
+  let totalDone=0,total=0;
+  Object.keys(groups).forEach(g=>{
+    const done=groups[g].filter(it=>get(it.id).done).length;
+    const tot=groups[g].length;totalDone+=done;total+=tot;
+    const pct=tot?Math.round(done/tot*100):0;
+    html+=`<div class="pcard"><div class="ptitle"><span>${names[g]}</span><span>${done}/${tot}</span></div>
+      <div class="pbar"><div style="width:${pct}%;background:${colors[g]}"></div></div>
+      <div class="pcount">${pct}% xong</div></div>`;
+  });
+  const pct=total?Math.round(totalDone/total*100):0;
+  html=`<div class="pcard" style="grid-column:1/-1"><div class="ptitle"><span>📋 Tổng tiến độ</span><span>${totalDone}/${total}</span></div>
+    <div class="pbar"><div style="width:${pct}%;background:linear-gradient(90deg,#54e98a,#2db866)"></div></div>
+    <div class="pcount">${pct}% hoàn thành</div></div>`+html;
+  document.getElementById('progress').innerHTML=html;
+}
+
+document.querySelectorAll('#filters button').forEach(b=>b.onclick=e=>{
+  document.querySelectorAll('#filters button').forEach(x=>x.classList.remove('active'));
+  e.target.classList.add('active');filter=e.target.dataset.f;render();
+});
+
+render();
+</script>
+</body>
+</html>

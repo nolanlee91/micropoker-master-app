@@ -360,7 +360,7 @@ function Bubble({ msg }) {
 // Progressive reveal of the Leak Profile — the moat. Encourages accumulation
 // before 5 hands, then reveals the recurring leaks and (for anonymous users) the
 // "save your profile" account prompt. Framed by RESULT, never by usage quota.
-function LeakProgress({ nAnalyzed, leaks, isAnonymous, onCreateAccount, linking }) {
+function LeakProgress({ nAnalyzed, leaks, isAnonymous, isPro, onCreateAccount, onUpgrade, linking }) {
   if (nAnalyzed < 1) return null
 
   // Pre-reveal: still accumulating, or no recurring leak yet.
@@ -380,6 +380,12 @@ function LeakProgress({ nAnalyzed, leaks, isAnonymous, onCreateAccount, linking 
 
   const top = leaks.slice(0, 3)
   const nRecurring = leaks.filter(l => l.recurring).length
+  // Teaser vs full (Hướng A, PROJECT/PRICING.md): Pro sees every leak + exact $.
+  // Free sees leak #1's NAME (the hook — "you're losing money on River Calling")
+  // but the $ amount is masked and leaks #2/#3 are locked. The moat is visible
+  // enough to want, hidden enough to pay for.
+  const topLeak = top[0]
+  const moreCount = leaks.length - 1
   return (
     <div style={{ marginTop:'8px', padding:'14px', borderRadius:'12px', background:C.surface, border:`1px solid ${C.primaryBorder}`, display:'flex', flexDirection:'column', gap:'10px' }}>
       <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
@@ -387,7 +393,9 @@ function LeakProgress({ nAnalyzed, leaks, isAnonymous, onCreateAccount, linking 
         <span style={{ fontSize:'0.8rem', fontWeight:800, color:C.text, letterSpacing:'-0.01em' }}>Your Leak Profile</span>
         <span style={{ marginLeft:'auto', fontSize:'0.62rem', color:C.textMuted }}>{nAnalyzed} hands</span>
       </div>
-      {top.map((l, i) => (
+
+      {/* Pro: full ranked list with exact $. */}
+      {isPro && top.map((l, i) => (
         <div key={l.category} style={{ display:'flex', alignItems:'center', gap:'8px' }}>
           <span style={{ fontSize:'0.62rem', fontWeight:700, color:C.textMuted, width:'12px' }}>{i + 1}</span>
           <span style={{ fontSize:'0.78rem', fontWeight:600, color:C.text, flex:1 }}>{LEAK_LABELS[l.category] || l.category}</span>
@@ -399,7 +407,34 @@ function LeakProgress({ nAnalyzed, leaks, isAnonymous, onCreateAccount, linking 
           </span>
         </div>
       ))}
-      {isAnonymous && (
+
+      {/* Free: teaser — leak #1 name visible, $ masked. */}
+      {!isPro && topLeak && (
+        <>
+          <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+            <span style={{ fontSize:'0.62rem', fontWeight:700, color:C.textMuted, width:'12px' }}>1</span>
+            <span style={{ fontSize:'0.78rem', fontWeight:600, color:C.text, flex:1 }}>{LEAK_LABELS[topLeak.category] || topLeak.category}</span>
+            <span style={{ fontSize:'0.58rem', fontWeight: topLeak.recurring ? 700 : 400, color: topLeak.recurring ? C.primary : C.textMuted }}>
+              {topLeak.recurring ? `×${topLeak.count} recurring` : `${topLeak.count} hand`}
+            </span>
+            <span style={{ fontSize:'0.85rem', fontWeight:700, color:C.red, fontVariantNumeric:'tabular-nums', minWidth:'54px', textAlign:'right', display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'3px' }}>
+              <Lock size={11} color={C.red} />••
+            </span>
+          </div>
+          {moreCount > 0 && (
+            <div style={{ display:'flex', alignItems:'center', gap:'8px', opacity:0.6 }}>
+              <Lock size={12} color={C.textMuted} style={{ marginLeft:'1px' }} />
+              <span style={{ fontSize:'0.72rem', color:C.textMuted, fontStyle:'italic' }}>
+                +{moreCount} more leak{moreCount > 1 ? 's' : ''} found — unlock to see all
+              </span>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* CTA — one ask at a time, in funnel order: save account first, then Pro.
+          Pro users get nothing here (they already see everything). */}
+      {!isPro && isAnonymous && (
         <div style={{ marginTop:'4px', padding:'12px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}`, display:'flex', flexDirection:'column', gap:'8px' }}>
           <div style={{ fontSize:'0.74rem', color:C.text, lineHeight:1.5, display:'flex', gap:'6px', alignItems:'flex-start' }}>
             <Lock size={13} color={C.primary} style={{ marginTop:'2px', flexShrink:0 }} />
@@ -410,6 +445,20 @@ function LeakProgress({ nAnalyzed, leaks, isAnonymous, onCreateAccount, linking 
           <button onClick={onCreateAccount} disabled={linking}
             style={{ padding:'9px 14px', borderRadius:'9px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontSize:'0.74rem', fontWeight:800, cursor: linking ? 'not-allowed' : 'pointer' }}>
             {linking ? 'Connecting…' : 'Create free account →'}
+          </button>
+        </div>
+      )}
+      {!isPro && !isAnonymous && (
+        <div style={{ marginTop:'4px', padding:'12px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}`, display:'flex', flexDirection:'column', gap:'8px' }}>
+          <div style={{ fontSize:'0.74rem', color:C.text, lineHeight:1.5, display:'flex', gap:'6px', alignItems:'flex-start' }}>
+            <Lock size={13} color={C.primary} style={{ marginTop:'2px', flexShrink:0 }} />
+            <span>{nRecurring > 0
+              ? `${nRecurring} recurring leak${nRecurring > 1 ? 's are' : ' is'} costing you money. Unlock the exact $ amounts and a fix plan for each.`
+              : `Unlock the exact $ cost of every leak and a step-by-step fix plan.`}</span>
+          </div>
+          <button onClick={onUpgrade}
+            style={{ padding:'9px 14px', borderRadius:'9px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontSize:'0.74rem', fontWeight:800, cursor:'pointer' }}>
+            Unlock full Leak Profile →
           </button>
         </div>
       )}
@@ -430,8 +479,19 @@ River A. UTG suddenly jams all-in for $250 into me. What should I do?`
 export default function AICoach({ preloadedHand, onHandConsumed }) {
   const { updateHand, addHand, hands } = useData()
   const { isAnonymous, linkGoogle } = useAuth()
-  const { isPro, setIsPro } = usePro()
+  const { isPro, refresh: refreshPro } = usePro()
   const [showPaywall, setShowPaywall] = useState(false)
+
+  // Returning from Stripe Checkout (success_url = /coach?checkout=success): the
+  // webhook may have just granted Pro, so re-read entitlement and clean the URL.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('checkout') === 'success') {
+      refreshPro()
+      setShowPaywall(false)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [refreshPro])
   const [messages,    setMessages]   = useLocalStorage('aicoach-messages', [])
   const [input,       setInput]      = useState('')
   const [playerType,  setPlayerType] = useState('Unknown')
@@ -910,7 +970,9 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           nAnalyzed={nAnalyzed}
           leaks={leaks}
           isAnonymous={isAnonymous}
+          isPro={isPro}
           onCreateAccount={handleCreateAccount}
+          onUpgrade={() => setShowPaywall(true)}
           linking={linking}
         />
 
@@ -960,8 +1022,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
       {showPaywall && (
         <Paywall
           onClose={() => setShowPaywall(false)}
-          // TODO: replace with real in-app purchase before store launch
-          onUpgrade={() => { setIsPro(true); setShowPaywall(false) }}
+          onRestore={refreshPro}
         />
       )}
 

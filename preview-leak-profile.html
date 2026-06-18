@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preview — Leak Profile (teaser vs Pro)</title>
+<style>
+  :root{
+    --bg:#0B0E14; --surface:#161B22; --surfaceHi:#1E2530; --surfaceHigh:#252D3A;
+    --border:#21262D; --primary:#54e98a; --primaryDim:rgba(84,233,138,0.1);
+    --primaryBorder:rgba(84,233,138,0.25); --secondary:#92ccff;
+    --text:#E6EDF3; --muted:#7D8590; --red:#f47067;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,'Segoe UI',sans-serif;background:#06080d;color:var(--text);
+    padding:24px 16px 80px;-webkit-font-smoothing:antialiased}
+  h1{font-size:1.3rem;font-weight:700;text-align:center;margin-bottom:4px}
+  .sub{text-align:center;color:var(--muted);font-size:0.8rem;margin-bottom:28px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;max-width:1100px;margin:0 auto}
+  .col{display:flex;flex-direction:column;gap:8px}
+  .coltag{font-size:0.66rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;
+    color:var(--muted);text-align:center;padding:6px;border-radius:8px;background:var(--surface);border:1px solid var(--border)}
+  .coltag b{color:var(--primary)}
+  /* device frame */
+  .device{background:var(--bg);border:1px solid var(--border);border-radius:16px;padding:14px;min-height:120px}
+  /* ── LeakProgress card (mirrors AICoach.jsx styles) ── */
+  .leakcard{margin-top:8px;padding:14px;border-radius:12px;background:var(--surface);
+    border:1px solid var(--primaryBorder);display:flex;flex-direction:column;gap:10px}
+  .leakhead{display:flex;align-items:center;gap:8px}
+  .leakhead .title{font-size:0.8rem;font-weight:800;color:var(--text);letter-spacing:-0.01em}
+  .leakhead .count{margin-left:auto;font-size:0.62rem;color:var(--muted)}
+  .row{display:flex;align-items:center;gap:8px}
+  .row .n{font-size:0.62rem;font-weight:700;color:var(--muted);width:12px}
+  .row .name{font-size:0.78rem;font-weight:600;color:var(--text);flex:1}
+  .row .rec{font-size:0.58rem;font-weight:700;color:var(--primary)}
+  .row .rec.one{font-weight:400;color:var(--muted)}
+  .row .amt{font-size:0.85rem;font-weight:700;color:var(--red);min-width:54px;text-align:right;
+    font-variant-numeric:tabular-nums;display:flex;align-items:center;justify-content:flex-end;gap:3px}
+  .lockedrow{display:flex;align-items:center;gap:8px;opacity:0.6}
+  .lockedrow .txt{font-size:0.72rem;color:var(--muted);font-style:italic}
+  .cta{margin-top:4px;padding:12px;border-radius:10px;background:var(--primaryDim);
+    border:1px solid var(--primaryBorder);display:flex;flex-direction:column;gap:8px}
+  .cta .msg{font-size:0.74rem;color:var(--text);line-height:1.5;display:flex;gap:6px;align-items:flex-start}
+  .cta button{padding:9px 14px;border-radius:9px;border:none;
+    background:linear-gradient(135deg,#67f09a,#54e98a,#2db866);color:#061a0e;
+    font-size:0.74rem;font-weight:800;cursor:pointer}
+  .pre{margin-top:8px;padding:12px 14px;border-radius:12px;background:var(--surface);
+    border:1px solid var(--border);display:flex;gap:10px;align-items:center}
+  .pre .txt{font-size:0.74rem;color:var(--muted);line-height:1.5}
+  svg{flex-shrink:0}
+  .note{font-size:0.64rem;color:var(--muted);text-align:center;margin-top:6px;font-style:italic}
+  /* paywall */
+  .pwwrap{max-width:1100px;margin:36px auto 0}
+  .pwtitle{text-align:center;font-size:0.95rem;font-weight:700;margin-bottom:14px;color:var(--text)}
+  .paywall{width:100%;max-width:360px;margin:0 auto;background:#161B22;border:1px solid #21262D;
+    border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:16px}
+  .pwhead{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+  .pwicon{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#aadaff,#92ccff,#5aabf5);
+    display:flex;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(146,204,255,0.3)}
+  .pwh1{font-size:1.15rem;font-weight:700;color:var(--text)}
+  .pwh2{font-size:0.8rem;color:var(--muted);line-height:1.5}
+  .perk{display:flex;align-items:center;gap:10px}
+  .perkchk{width:20px;height:20px;border-radius:6px;background:rgba(84,233,138,0.12);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .perk span{font-size:0.82rem;color:var(--text)}
+  .pwbtn{width:100%;padding:14px;border-radius:10px;border:none;
+    background:linear-gradient(135deg,#67f09a,#54e98a,#2db866);color:#061a0e;
+    font-size:0.92rem;font-weight:700;cursor:pointer}
+</style>
+</head>
+<body>
+<h1>🔍 Preview — Leak Profile</h1>
+<div class="sub">Đúng style/màu của code vừa sửa · so sánh các trạng thái cạnh nhau</div>
+
+<div class="grid">
+
+  <!-- STATE 1: Free teaser, anonymous -->
+  <div class="col">
+    <div class="coltag">FREE · <b>chưa đăng nhập</b></div>
+    <div class="device">
+      <div class="leakcard">
+        <div class="leakhead">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#54e98a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>
+          <span class="title">Your Leak Profile</span>
+          <span class="count">7 hands</span>
+        </div>
+        <div class="row">
+          <span class="n">1</span>
+          <span class="name">River Calling Too Wide</span>
+          <span class="rec">×4 recurring</span>
+          <span class="amt"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f47067" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>••</span>
+        </div>
+        <div class="lockedrow">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7D8590" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span class="txt">+2 more leaks found — unlock to see all</span>
+        </div>
+        <div class="cta">
+          <div class="msg">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#54e98a" stroke-width="2" style="margin-top:2px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span>We've found 1 recurring leak costing you money. Create a free account to save your Leak Profile.</span>
+          </div>
+          <button>Create free account →</button>
+        </div>
+      </div>
+      <div class="note">Tên leak #1 lộ · số tiền che 🔒 · #2/#3 khóa · CTA = tạo account</div>
+    </div>
+  </div>
+
+  <!-- STATE 2: Free teaser, logged-in non-Pro -->
+  <div class="col">
+    <div class="coltag">FREE · <b>có account, chưa Pro</b></div>
+    <div class="device">
+      <div class="leakcard">
+        <div class="leakhead">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#54e98a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>
+          <span class="title">Your Leak Profile</span>
+          <span class="count">7 hands</span>
+        </div>
+        <div class="row">
+          <span class="n">1</span>
+          <span class="name">River Calling Too Wide</span>
+          <span class="rec">×4 recurring</span>
+          <span class="amt"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f47067" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>••</span>
+        </div>
+        <div class="lockedrow">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7D8590" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span class="txt">+2 more leaks found — unlock to see all</span>
+        </div>
+        <div class="cta">
+          <div class="msg">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#54e98a" stroke-width="2" style="margin-top:2px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span>1 recurring leak is costing you money. Unlock the exact $ amounts and a fix plan for each.</span>
+          </div>
+          <button>Unlock full Leak Profile →</button>
+        </div>
+      </div>
+      <div class="note">Cùng teaser · nhưng CTA = mở Pro (gọi Paywall)</div>
+    </div>
+  </div>
+
+  <!-- STATE 3: Pro -->
+  <div class="col">
+    <div class="coltag">PRO 💰 · <b>full</b></div>
+    <div class="device">
+      <div class="leakcard">
+        <div class="leakhead">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#54e98a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>
+          <span class="title">Your Leak Profile</span>
+          <span class="count">7 hands</span>
+        </div>
+        <div class="row"><span class="n">1</span><span class="name">River Calling Too Wide</span><span class="rec">×4 recurring</span><span class="amt">-$182</span></div>
+        <div class="row"><span class="n">2</span><span class="name">BTN Defending Too Wide</span><span class="rec">×2 recurring</span><span class="amt">-$94</span></div>
+        <div class="row"><span class="n">3</span><span class="name">Overbluffing Turn</span><span class="rec one">1 hand</span><span class="amt">-$57</span></div>
+      </div>
+      <div class="note">Tên + số tiền $ thật, đủ bảng xếp hạng · không CTA</div>
+    </div>
+  </div>
+
+  <!-- STATE 4: Pre-reveal (accumulating) -->
+  <div class="col">
+    <div class="coltag">FREE · <b>chưa đủ 5 hand</b></div>
+    <div class="device">
+      <div class="pre">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#92ccff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>
+        <div class="txt">We're starting to see patterns. 2 more hands to reveal your biggest leak.</div>
+      </div>
+      <div class="note">Trạng thái tích lũy trước mốc 5 hand (không đổi — giữ nguyên)</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Paywall preview -->
+<div class="pwwrap">
+  <div class="pwtitle">↑ Khi bấm "Unlock full Leak Profile" → hiện Paywall (PERKS đã sửa)</div>
+  <div class="paywall">
+    <div class="pwhead">
+      <div class="pwicon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#071525" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/></svg>
+      </div>
+      <div class="pwh1">Unlock your Leak Profile</div>
+      <div class="pwh2">See exactly which leaks cost you the most — and how to fix them.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="perk"><div class="perkchk"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#54e98a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div><span>Full Leak Profile — every leak ranked by $ lost</span></div>
+      <div class="perk"><div class="perkchk"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#54e98a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div><span>Exact $ cost per leak (not blurred)</span></div>
+      <div class="perk"><div class="perkchk"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#54e98a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div><span>Step-by-step fix plan for each leak</span></div>
+      <div class="perk"><div class="perkchk"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#54e98a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div><span>Deep follow-up coaching on your leaks</span></div>
+      <div class="perk"><div class="perkchk"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#54e98a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div><span>Watch your leaks shrink over time</span></div>
+    </div>
+    <button class="pwbtn">Upgrade to Pro</button>
+    <div style="font-size:0.6rem;color:var(--muted);text-align:center;opacity:0.7">Placeholder — in-app purchase wired before store launch.</div>
+  </div>
+  <div class="note" style="margin-top:14px">⚠️ Nút "Upgrade" vẫn là placeholder — chưa thu tiền thật (đó là P0-1).</div>
+</div>
+
+</body>
+</html>

@@ -381,12 +381,31 @@ function LeakNudge({ nAnalyzed, leaks, onOpen }) {
 // Pre-filled example so a first-time user with no hand of their own still gets
 // the "aha" in one click — kills the hidden "what do I even paste?" friction.
 // Written the way a live rec player actually tells a story (free text, not a form).
-const EXAMPLE_HAND = `1/3 live, $650 effective.
-I'm on the BTN with Ah Kh. UTG is a tight reg, nitty all night.
-UTG raises to $15, two callers, I make it $70. Only UTG calls.
-Flop K 7 2 rainbow, pot ~$160. UTG checks, I bet $90, he calls.
-Turn 8. UTG checks, I bet $180, he calls.
-River A. UTG suddenly jams all-in for $250 into me. What should I do?`
+const EXAMPLE_HAND = `1/3 live, $500 effective. I'm on the BTN with Qs Js.
+UTG is a tight, passive nit — never bluffs, folds too much.
+UTG opens to $15, I call.
+Flop Qh Jd 4h, pot ~$33. I flop top two pair. UTG bets $20, I call.
+Turn 7h — three hearts now. UTG bets $55, I call.
+River 2h — four hearts on the board. UTG suddenly jams $180 into ~$160. What should I do?`
+
+// Hardcoded analysis for the example hand so the first-run demo is INSTANT (no
+// API round-trip, no Pro-model wait, works even if /api/coach is down). Mirrors
+// the real analysis schema so it renders through the same AnalysisCard. The hand
+// is a clear, non-debatable fold (two pair dead to a four-flush vs a nit) so the
+// demo is unambiguously instructive.
+const EXAMPLE_ANALYSIS = {
+  heroHandStrength: 'Two Pair, Queens and Jacks',
+  boardTexture:     'four-flush board (hearts) — very wet',
+  actionLine:       'UTG opens $15, BTN calls. Flop Qh Jd 4h: bet $20, call. Turn 7h (3 hearts): bet $55, call. River 2h (4th heart): UTG jams $180 into ~$160 (~$180 effective).',
+  summary:          'Fold. Your two pair is drawing dead to any flush, and a passive nit is not jamming a four-heart board without one.',
+  biggestMistake:   'Calling the river jam — paying off the completed flush on a four-heart board against a player who never bluffs.',
+  mistakeType:      'overcall',
+  leak_category:    'river_call_too_wide',
+  ev_impact:        -180,
+  confidence:       'high',
+  whyWrong:         'A tight, passive nit who never bluffs jams this board with a flush almost every time. Two pair only beats a bluff or worse two pair — neither is in his range here, so the call is money lost.',
+  betterLine:       'Fold.',
+}
 
 export default function AICoach({ preloadedHand, onHandConsumed }) {
   const { updateHand, addHand, hands } = useData()
@@ -695,6 +714,19 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
+  // First-run demo: show the example hand + its (hardcoded) analysis INSTANTLY —
+  // no API call, no Pro-model wait. The fastest possible path to the aha.
+  const showExample = useCallback(() => {
+    if (loading) return
+    setLoadedHand(null)
+    setInput('')
+    setInstantRead(null)
+    setMessages([
+      { role:'user', content: EXAMPLE_HAND },
+      { role:'assistant', type:'analysis', content: EXAMPLE_ANALYSIS.summary, analysis: EXAMPLE_ANALYSIS },
+    ])
+  }, [loading, setMessages])
+
   const resultStr = loadedHand ? fmtResult(loadedHand.result) : null
 
   // Leak profile drives the progressive reveal (hands accumulate across the session).
@@ -812,17 +844,16 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
             {/* One click → instant analysis. The fastest path to the "aha" for a
                 first-timer who has no hand of their own to paste yet. */}
             <button
-              onClick={() => handleSend(EXAMPLE_HAND)}
-              disabled={loading}
+              onClick={showExample}
               style={{
                 marginTop:'6px', padding:'12px 20px', borderRadius:'11px', border:'none',
                 background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e',
-                fontSize:'0.82rem', fontWeight:800, cursor: loading ? 'wait' : 'pointer',
+                fontSize:'0.82rem', fontWeight:800, cursor:'pointer',
                 display:'flex', alignItems:'center', gap:'7px',
                 boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 16px rgba(84,233,138,0.25)',
               }}
             >
-              <BrainCircuit size={15} /> {loading ? 'Analyzing…' : 'See an example analysis →'}
+              <BrainCircuit size={15} /> See an example analysis →
             </button>
             <div style={{ fontSize:'0.66rem', color:C.textMuted, opacity:0.7 }}>
               Instant · no signup needed
@@ -859,10 +890,14 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
             <div style={{ width:'28px', height:'28px', minWidth:'28px', borderRadius:'8px', background:'linear-gradient(135deg,#aadaff,#92ccff,#5aabf5)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
               <BrainCircuit size={14} color="#071525" />
             </div>
-            <div style={{ padding:'12px 16px', background:'rgba(22,27,34,0.9)', border:`1px solid rgba(146,204,255,0.08)`, borderRadius:'4px 16px 16px 16px', display:'flex', gap:'5px', alignItems:'center' }}>
-              {[0,1,2].map(i => (
-                <div key={i} style={{ width:'6px', height:'6px', borderRadius:'50%', background:C.secondary, animation:`pulse 1.2s ${i*0.2}s infinite` }} />
-              ))}
+            <div style={{ padding:'12px 16px', background:'rgba(22,27,34,0.9)', border:`1px solid rgba(146,204,255,0.08)`, borderRadius:'4px 16px 16px 16px', display:'flex', flexDirection:'column', gap:'8px' }}>
+              <div style={{ display:'flex', gap:'5px', alignItems:'center' }}>
+                {[0,1,2].map(i => (
+                  <div key={i} style={{ width:'6px', height:'6px', borderRadius:'50%', background:C.secondary, animation:`pulse 1.2s ${i*0.2}s infinite` }} />
+                ))}
+              </div>
+              {/* Reassure: the Pro model reasons deeply, so it's a few seconds — not a hang. */}
+              <div style={{ fontSize:'0.66rem', color:C.textMuted }}>Reading the hand in depth — a few seconds…</div>
             </div>
           </div>
         )}

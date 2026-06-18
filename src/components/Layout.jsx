@@ -164,9 +164,9 @@ function RefreshSpinner({ spinning, angle, ready }) {
   )
 }
 
-const PTR_THRESHOLD = 76   // px (damped) the user must pull to trigger a refresh
-const PTR_MAX       = 130  // hard cap on how far the content can be dragged
-const PTR_RESIST    = 130  // higher = stiffer spring (must pull deeper to move)
+const PTR_THRESHOLD = 84   // px (damped) the user must pull to trigger a refresh
+const PTR_MAX       = 140  // hard cap on how far the content can be dragged
+const PTR_RESIST    = 175  // higher = stiffer spring (must pull deeper to move)
 
 export default function Layout({ children }) {
   const { session, signOut } = useAuth()

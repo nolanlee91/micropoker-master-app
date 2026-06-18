@@ -469,62 +469,73 @@ function StatsView({ sessions }) {
   const money  = (v, signed=true) => `${signed ? (v>=0?'+':'-') : (v<0?'-':'')}$${Math.abs(Math.round(v))}`
   const hrate  = (v) => `${v>=0?'+':'-'}$${Math.abs(v).toFixed(1)}`
 
-  const Metric = ({ label, value, color }) => (
-    <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'10px', padding:'12px 14px' }}>
-      <div style={{ fontSize:'0.5rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'6px' }}>{label}</div>
-      <div style={{ fontSize:'1.05rem', fontWeight:700, color:color||C.text, fontVariantNumeric:'tabular-nums', letterSpacing:'-0.01em' }}>{value}</div>
+  // Single-column "table row" — the KOL stats apps lay everything out as
+  // label-left / value-right rows grouped under section headers.
+  const Row = ({ label, value, color, top }) => (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'11px 14px', borderTop: top ? `1px solid ${C.border}` : 'none' }}>
+      <span style={{ fontSize:'0.76rem', color:C.textMuted }}>{label}</span>
+      <span style={{ fontSize:'0.85rem', fontWeight:700, color:color||C.text, fontVariantNumeric:'tabular-nums', letterSpacing:'-0.01em' }}>{value}</span>
     </div>
   )
 
+  const perf = [
+    { label:'Sessions',   value:`${s.n}` },
+    { label:'Hours',      value:s.hours.toFixed(0) },
+    { label:'$ / hour',   value:s.hourly!=null ? hrate(s.hourly) : '--', color:s.hourly!=null ? (s.hourly>=0?C.primary:C.red) : undefined },
+    { label:'ROI',        value:s.roi!=null ? `${s.roi.toFixed(0)}%` : '--', color:s.roi!=null ? (s.roi>=0?C.primary:C.red) : undefined },
+    { label:'Won rate',   value:s.wonPct!=null ? `${s.wonPct.toFixed(0)}%` : '--' },
+    { label:'Avg buy-in', value:`$${s.avgBuyIn.toFixed(0)}` },
+    { label:'Avg profit', value:money(s.avgProfit), color:s.avgProfit>=0?C.primary:C.red },
+  ]
+
+  const card = { background:C.surface, border:`1px solid ${C.border}`, borderRadius:'12px', overflow:'hidden' }
+
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
-      {/* Summary card */}
-      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'12px', padding:'18px' }}>
-        {lbl('Net Profit')}
-        <div style={{ fontSize:'2rem', fontWeight:700, letterSpacing:'-0.03em', color:s.net>=0?C.primary:C.red, fontVariantNumeric:'tabular-nums' }}>
-          {money(s.net)}
+    <div style={{ display:'flex', flexDirection:'column', gap:'18px' }}>
+      {/* Summary — net profit headline, buy-in / cash-out compact on the right */}
+      <div style={{ ...card, padding:'16px 18px', display:'flex', justifyContent:'space-between', alignItems:'center', gap:'14px' }}>
+        <div>
+          <div style={{ fontSize:'0.52rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'6px' }}>Net Profit</div>
+          <div style={{ fontSize:'1.85rem', fontWeight:700, letterSpacing:'-0.03em', color:s.net>=0?C.primary:C.red, fontVariantNumeric:'tabular-nums', lineHeight:1 }}>{money(s.net)}</div>
         </div>
-        <div style={{ display:'flex', gap:'24px', marginTop:'12px' }}>
-          <div>
-            <div style={{ fontSize:'0.54rem', color:C.textMuted, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'2px' }}>Buy-In</div>
-            <div style={{ fontSize:'0.88rem', fontWeight:600, color:C.text, fontVariantNumeric:'tabular-nums' }}>{money(s.totalBuyIn,false)}</div>
+        <div style={{ display:'flex', flexDirection:'column', gap:'7px', minWidth:'128px' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', gap:'10px' }}>
+            <span style={{ fontSize:'0.66rem', color:C.textMuted }}>Buy-In</span>
+            <span style={{ fontSize:'0.74rem', fontWeight:600, color:C.text, fontVariantNumeric:'tabular-nums' }}>{money(s.totalBuyIn,false)}</span>
           </div>
-          <div>
-            <div style={{ fontSize:'0.54rem', color:C.textMuted, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'2px' }}>Cash-Out</div>
-            <div style={{ fontSize:'0.88rem', fontWeight:600, color:C.text, fontVariantNumeric:'tabular-nums' }}>{money(s.totalCashOut,false)}</div>
+          <div style={{ display:'flex', justifyContent:'space-between', gap:'10px' }}>
+            <span style={{ fontSize:'0.66rem', color:C.textMuted }}>Cash-Out</span>
+            <span style={{ fontSize:'0.74rem', fontWeight:600, color:C.text, fontVariantNumeric:'tabular-nums' }}>{money(s.totalCashOut,false)}</span>
           </div>
         </div>
       </div>
 
-      {/* Metrics grid */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(96px, 1fr))', gap:'8px' }}>
-        <Metric label="Sessions"  value={s.n} />
-        <Metric label="Hours"     value={s.hours.toFixed(0)} />
-        <Metric label="$ / h"     value={s.hourly!=null ? hrate(s.hourly) : '--'} color={s.hourly!=null ? (s.hourly>=0?C.primary:C.red) : C.text} />
-        <Metric label="ROI"       value={s.roi!=null ? `${s.roi.toFixed(0)}%` : '--'} color={s.roi!=null ? (s.roi>=0?C.primary:C.red) : C.text} />
-        <Metric label="Won %"     value={s.wonPct!=null ? `${s.wonPct.toFixed(0)}%` : '--'} />
-        <Metric label="Avg Buy-In" value={`$${s.avgBuyIn.toFixed(0)}`} />
-        <Metric label="Avg Profit" value={money(s.avgProfit)} color={s.avgProfit>=0?C.primary:C.red} />
+      {/* Performance */}
+      <div>
+        {lbl('Performance')}
+        <div style={card}>
+          {perf.map((r, i) => <Row key={r.label} label={r.label} value={r.value} color={r.color} top={i>0} />)}
+        </div>
       </div>
 
       {/* By stake */}
       <div>
         {lbl('By Stake')}
-        <div style={{ display:'flex', fontSize:'0.54rem', color:C.textMuted, textTransform:'uppercase', letterSpacing:'0.06em', padding:'0 12px 6px' }}>
-          <span style={{ flex:1 }}>Stake</span>
-          <span style={{ width:'56px', textAlign:'right' }}>Hours</span>
-          <span style={{ width:'72px', textAlign:'right' }}>$/h</span>
-          <span style={{ width:'72px', textAlign:'right' }}>Total</span>
-        </div>
-        <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+        <div style={card}>
+          <div style={{ display:'flex', fontSize:'0.52rem', color:C.textMuted, textTransform:'uppercase', letterSpacing:'0.06em', padding:'10px 14px 8px' }}>
+            <span style={{ flex:1 }}>Stake</span>
+            <span style={{ width:'52px', textAlign:'right' }}>Hours</span>
+            <span style={{ width:'70px', textAlign:'right' }}>$/h</span>
+            <span style={{ width:'74px', textAlign:'right' }}>Total</span>
+          </div>
           {s.stakeRows.map(r => {
             const rate = r.hours > 0 ? r.profit / r.hours : null
             return (
-              <div key={r.stake} style={{ display:'flex', alignItems:'center', background:C.surface, border:`1px solid ${C.border}`, borderRadius:'8px', padding:'10px 12px', fontVariantNumeric:'tabular-nums' }}>
+              <div key={r.stake} style={{ display:'flex', alignItems:'center', padding:'11px 14px', borderTop:`1px solid ${C.border}`, fontVariantNumeric:'tabular-nums' }}>
                 <span style={{ flex:1, fontSize:'0.78rem', fontWeight:600, color:C.text }}>{r.stake}</span>
-                <span style={{ width:'56px', textAlign:'right', fontSize:'0.72rem', color:C.textMuted }}>{r.hours.toFixed(0)}h</span>
-                <span style={{ width:'72px', textAlign:'right', fontSize:'0.72rem', color: rate==null ? C.textMuted : (rate>=0?C.primary:C.red) }}>{rate!=null ? hrate(rate) : '--'}</span>
-                <span style={{ width:'72px', textAlign:'right', fontSize:'0.78rem', fontWeight:700, color: r.profit>=0?C.primary:C.red }}>{money(r.profit)}</span>
+                <span style={{ width:'52px', textAlign:'right', fontSize:'0.72rem', color:C.textMuted }}>{r.hours.toFixed(0)}h</span>
+                <span style={{ width:'70px', textAlign:'right', fontSize:'0.72rem', color: rate==null ? C.textMuted : (rate>=0?C.primary:C.red) }}>{rate!=null ? hrate(rate) : '--'}</span>
+                <span style={{ width:'74px', textAlign:'right', fontSize:'0.78rem', fontWeight:700, color: r.profit>=0?C.primary:C.red }}>{money(r.profit)}</span>
               </div>
             )
           })}
@@ -545,17 +556,6 @@ export default function BankrollManager() {
   const handleEditHand = (hand) => {
     navigate('/history', { state: { editHand: hand } })
   }
-
-  const stats = useMemo(() => {
-    const totalProfit   = sessions.reduce((s,r) => s+(r.profit||0), 0)
-    const totalHours    = sessions.reduce((s,r) => s+(r.hours||0), 0)
-    const earlyEstimate = sessions.length < 3 || totalHours * 60 < 120
-    const hourlyRaw     = totalHours > 0 ? totalProfit / totalHours : null
-    const hourlyDisplay = hourlyRaw !== null
-      ? `${hourlyRaw < 0 ? '-' : '+'}$${Math.abs(hourlyRaw).toFixed(1)}/h`
-      : '--'
-    return { totalProfit, totalHours, earlyEstimate, hourlyRaw, hourlyDisplay }
-  }, [sessions])
 
   const handleLink = async (sessionId, handIds) => {
     await linkHandsToSession(sessionId, handIds)
@@ -594,25 +594,6 @@ export default function BankrollManager() {
       </div>
 
       {view === 'stats' ? <StatsView sessions={sessions} /> : (<>
-
-      {/* Stats grid — 2 money KPIs */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'20px' }}>
-        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'12px', padding:'16px 18px' }}>
-          <div style={{ fontSize:'0.55rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'10px' }}>Total Profit</div>
-          <div style={{ fontSize:'1.65rem', fontWeight:700, letterSpacing:'-0.03em', color:stats.totalProfit>=0?C.primary:C.red, fontVariantNumeric:'tabular-nums' }}>
-            {stats.totalProfit>=0?'+':'-'}${Math.abs(stats.totalProfit).toFixed(0)}
-          </div>
-        </div>
-        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'12px', padding:'16px 18px' }}>
-          <div style={{ fontSize:'0.55rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'10px' }}>Hourly Rate</div>
-          <div style={{ fontSize:'1.65rem', fontWeight:700, letterSpacing:'-0.03em', color:C.text, fontVariantNumeric:'tabular-nums' }}>
-            {stats.hourlyDisplay}
-          </div>
-          {stats.earlyEstimate && stats.hourlyRaw !== null && (
-            <div style={{ fontSize:'0.6rem', color:'#FAD261', marginTop:'4px' }}>⚠️ Early estimate</div>
-          )}
-        </div>
-      </div>
 
       {/* Profit chart */}
       <ProfitChart sessions={sessions} />

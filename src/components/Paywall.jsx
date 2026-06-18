@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { BrainCircuit, Check, X } from 'lucide-react'
+import { BrainCircuit, Check, X, ShieldCheck, RotateCcw } from 'lucide-react'
 import { startCheckout } from '../lib/checkout'
 
 // Paywall for Pro (the Leak Profile). Real billing via Stripe Checkout — the
@@ -102,13 +102,23 @@ export default function Paywall({ onClose, onRestore }) {
           {loading ? 'Redirecting…' : `Upgrade — ${PLANS[plan].price}${PLANS[plan].cadence}`}
         </button>
 
-        <div style={{ display:'flex', justifyContent:'center', gap:'14px', fontSize:'0.66rem', color:C.textMuted }}>
+        {/* Value reframe (honest, not social proof): for a live 1/2–1/3 player the
+            monthly is less than a single buy-in. */}
+        <div style={{ fontSize:'0.7rem', color:C.text, textAlign:'center', opacity:0.85 }}>
+          Less than one buy-in a month.
+        </div>
+
+        {/* Trust row — real signals only: Stripe-secured, no lock-in, restorable. */}
+        <div style={{ display:'flex', flexDirection:'column', gap:'8px', alignItems:'center', borderTop:`1px solid ${C.border}`, paddingTop:'14px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'14px', fontSize:'0.64rem', color:C.textMuted }}>
+            <span style={{ display:'flex', alignItems:'center', gap:'5px' }}><ShieldCheck size={12} color={C.primary} /> Secure checkout · Stripe</span>
+            <span style={{ display:'flex', alignItems:'center', gap:'5px' }}><Check size={12} color={C.primary} /> Cancel anytime</span>
+          </div>
           {onRestore && (
-            <button onClick={onRestore} style={{ background:'none', border:'none', color:C.secondary, cursor:'pointer', fontSize:'0.66rem' }}>
-              Restore purchase
+            <button onClick={onRestore} style={{ background:'none', border:'none', color:C.secondary, cursor:'pointer', fontSize:'0.64rem', display:'flex', alignItems:'center', gap:'5px' }}>
+              <RotateCcw size={11} /> Restore purchase
             </button>
           )}
-          <span style={{ opacity:0.7 }}>Cancel anytime</span>
         </div>
       </div>
     </div>

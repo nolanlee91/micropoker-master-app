@@ -434,12 +434,113 @@ function TopLeaks({ hands }) {
   )
 }
 
+// ── Stats view — derived entirely from existing session data ──────────────────
+function StatsView({ sessions }) {
+  const s = useMemo(() => {
+    const n            = sessions.length
+    const totalBuyIn   = sessions.reduce((a,r)=>a+(r.buyIn||0),0)
+    const totalCashOut = sessions.reduce((a,r)=>a+(r.cashOut||0),0)
+    const net          = sessions.reduce((a,r)=>a+(r.profit||0),0)
+    const hours        = sessions.reduce((a,r)=>a+(r.hours||0),0)
+    const wins         = sessions.filter(r=>(r.profit||0)>0).length
+    const byStake = {}
+    for (const r of sessions) {
+      const k = r.stakes || '—'
+      if (!byStake[k]) byStake[k] = { stake:k, hours:0, profit:0, count:0 }
+      byStake[k].hours  += r.hours  || 0
+      byStake[k].profit += r.profit || 0
+      byStake[k].count  += 1
+    }
+    return {
+      n, totalBuyIn, totalCashOut, net, hours, wins,
+      hourly:    hours > 0 ? net / hours : null,
+      roi:       totalBuyIn > 0 ? net / totalBuyIn * 100 : null,
+      wonPct:    n > 0 ? wins / n * 100 : null,
+      avgBuyIn:  n > 0 ? totalBuyIn / n : 0,
+      avgProfit: n > 0 ? net / n : 0,
+      stakeRows: Object.values(byStake).sort((a,b)=>b.profit-a.profit),
+    }
+  }, [sessions])
+
+  if (sessions.length === 0) {
+    return <div style={{ padding:'48px 20px', textAlign:'center', color:C.textMuted, opacity:0.4, fontSize:'0.82rem' }}>Log a session to see your stats.</div>
+  }
+
+  const money  = (v, signed=true) => `${signed ? (v>=0?'+':'-') : (v<0?'-':'')}$${Math.abs(Math.round(v))}`
+  const hrate  = (v) => `${v>=0?'+':'-'}$${Math.abs(v).toFixed(1)}`
+
+  const Metric = ({ label, value, color }) => (
+    <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'10px', padding:'12px 14px' }}>
+      <div style={{ fontSize:'0.5rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'6px' }}>{label}</div>
+      <div style={{ fontSize:'1.05rem', fontWeight:700, color:color||C.text, fontVariantNumeric:'tabular-nums', letterSpacing:'-0.01em' }}>{value}</div>
+    </div>
+  )
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
+      {/* Summary card */}
+      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:'12px', padding:'18px' }}>
+        {lbl('Net Profit')}
+        <div style={{ fontSize:'2rem', fontWeight:700, letterSpacing:'-0.03em', color:s.net>=0?C.primary:C.red, fontVariantNumeric:'tabular-nums' }}>
+          {money(s.net)}
+        </div>
+        <div style={{ display:'flex', gap:'24px', marginTop:'12px' }}>
+          <div>
+            <div style={{ fontSize:'0.54rem', color:C.textMuted, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'2px' }}>Buy-In</div>
+            <div style={{ fontSize:'0.88rem', fontWeight:600, color:C.text, fontVariantNumeric:'tabular-nums' }}>{money(s.totalBuyIn,false)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize:'0.54rem', color:C.textMuted, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'2px' }}>Cash-Out</div>
+            <div style={{ fontSize:'0.88rem', fontWeight:600, color:C.text, fontVariantNumeric:'tabular-nums' }}>{money(s.totalCashOut,false)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Metrics grid */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(96px, 1fr))', gap:'8px' }}>
+        <Metric label="Sessions"  value={s.n} />
+        <Metric label="Hours"     value={s.hours.toFixed(0)} />
+        <Metric label="$ / h"     value={s.hourly!=null ? hrate(s.hourly) : '--'} color={s.hourly!=null ? (s.hourly>=0?C.primary:C.red) : C.text} />
+        <Metric label="ROI"       value={s.roi!=null ? `${s.roi.toFixed(0)}%` : '--'} color={s.roi!=null ? (s.roi>=0?C.primary:C.red) : C.text} />
+        <Metric label="Won %"     value={s.wonPct!=null ? `${s.wonPct.toFixed(0)}%` : '--'} />
+        <Metric label="Avg Buy-In" value={`$${s.avgBuyIn.toFixed(0)}`} />
+        <Metric label="Avg Profit" value={money(s.avgProfit)} color={s.avgProfit>=0?C.primary:C.red} />
+      </div>
+
+      {/* By stake */}
+      <div>
+        {lbl('By Stake')}
+        <div style={{ display:'flex', fontSize:'0.54rem', color:C.textMuted, textTransform:'uppercase', letterSpacing:'0.06em', padding:'0 12px 6px' }}>
+          <span style={{ flex:1 }}>Stake</span>
+          <span style={{ width:'56px', textAlign:'right' }}>Hours</span>
+          <span style={{ width:'72px', textAlign:'right' }}>$/h</span>
+          <span style={{ width:'72px', textAlign:'right' }}>Total</span>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+          {s.stakeRows.map(r => {
+            const rate = r.hours > 0 ? r.profit / r.hours : null
+            return (
+              <div key={r.stake} style={{ display:'flex', alignItems:'center', background:C.surface, border:`1px solid ${C.border}`, borderRadius:'8px', padding:'10px 12px', fontVariantNumeric:'tabular-nums' }}>
+                <span style={{ flex:1, fontSize:'0.78rem', fontWeight:600, color:C.text }}>{r.stake}</span>
+                <span style={{ width:'56px', textAlign:'right', fontSize:'0.72rem', color:C.textMuted }}>{r.hours.toFixed(0)}h</span>
+                <span style={{ width:'72px', textAlign:'right', fontSize:'0.72rem', color: rate==null ? C.textMuted : (rate>=0?C.primary:C.red) }}>{rate!=null ? hrate(rate) : '--'}</span>
+                <span style={{ width:'72px', textAlign:'right', fontSize:'0.78rem', fontWeight:700, color: r.profit>=0?C.primary:C.red }}>{money(r.profit)}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function BankrollManager() {
   const navigate = useNavigate()
   const { sessions, hands, addSession, updateSession, deleteSession, linkHandsToSession } = useData()
   const [showModal,   setShowModal]   = useState(false)
   const [editSession, setEditSession] = useState(null)
+  const [view,        setView]        = useState('sessions')   // 'sessions' | 'stats'
 
   const handleEditHand = (hand) => {
     navigate('/history', { state: { editHand: hand } })
@@ -478,6 +579,21 @@ export default function BankrollManager() {
           <PlusCircle size={13}/> Log Session
         </button>
       </div>
+
+      {/* View toggle — keeps the default Sessions view uncluttered; Stats is its
+          own focused screen (the way the KOL stats apps present it). */}
+      <div style={{ display:'flex', gap:'4px', marginBottom:'18px', background:C.surface, border:`1px solid ${C.border}`, borderRadius:'10px', padding:'4px' }}>
+        {[['sessions','Sessions'], ['stats','Stats']].map(([v, label]) => (
+          <button key={v} onClick={() => setView(v)} style={{
+            flex:1, padding:'9px', borderRadius:'7px', border:'none', cursor:'pointer',
+            background: view===v ? C.surfaceHigh : 'transparent',
+            color: view===v ? C.text : C.textMuted,
+            fontSize:'0.74rem', fontWeight:700, letterSpacing:'0.03em',
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {view === 'stats' ? <StatsView sessions={sessions} /> : (<>
 
       {/* Stats grid — 2 money KPIs */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'20px' }}>
@@ -520,6 +636,8 @@ export default function BankrollManager() {
           ))}
         </div>
       </div>
+
+      </>)}
 
       {showModal && (
         <SessionModal

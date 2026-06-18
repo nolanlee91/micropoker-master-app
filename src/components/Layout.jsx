@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { NavLink } from 'react-router-dom'
 import { History, Wallet, Calculator, BrainCircuit, Spade, Zap, LogOut, Settings, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useData } from '../context/DataContext'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 
 const NAV = [
@@ -147,14 +148,75 @@ function colorRgb(hex) {
   return '146,204,255'
 }
 
+// Pull-to-refresh spinner: rotates with the drag while pulling, spins on its own
+// once a refresh is in flight. Turns solid green when past the release threshold.
+function RefreshSpinner({ spinning, angle, ready }) {
+  return (
+    <div style={{
+      width:'26px', height:'26px', borderRadius:'50%', background:C.bg,
+      border:`2px solid rgba(84,233,138,0.18)`,
+      borderTopColor: (ready || spinning) ? C.primary : 'rgba(84,233,138,0.55)',
+      boxShadow:'0 2px 8px rgba(0,0,0,0.4)',
+      transform: spinning ? 'none' : `rotate(${angle}deg)`,
+      animation: spinning ? 'ptrspin 0.7s linear infinite' : 'none',
+    }} />
+  )
+}
+
+const PTR_THRESHOLD = 70   // px (damped) the user must pull to trigger a refresh
+
 export default function Layout({ children }) {
   const { session, signOut } = useAuth()
+  const { refetch } = useData()
   const displayName = getDisplayName(session)
   const [mobile, setMobile] = useState(window.innerWidth < 768)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [language, setLanguage] = useLocalStorage('aicoach-language', 'English')
   const panelRef = useRef(null)
   const triggerRef = useRef(null)
+
+  // ── Pull-to-refresh (mobile) ───────────────────────────────────────────────
+  // Only engages when the scroll area is already at the very top and the user
+  // drags DOWN. We translate the content (not a real scroll) and, past the
+  // threshold, re-sync data from Supabase via DataContext.refetch().
+  const scrollRef = useRef(null)
+  const ptr = useRef({ startY: 0, active: false })
+  const [pull, setPull] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const onTouchStart = (e) => {
+    const el = scrollRef.current
+    if (!el || refreshing) { ptr.current.active = false; return }
+    // Abort if any scroller between the touch point and the container is scrolled
+    // down — that means the user is scrolling inner content (e.g. the coach chat),
+    // not pulling the page. Only pull when everything is already at the top.
+    let node = e.target
+    while (node && node !== el) {
+      if (node.scrollHeight > node.clientHeight && node.scrollTop > 0) { ptr.current.active = false; return }
+      node = node.parentElement
+    }
+    if (el.scrollTop > 0) { ptr.current.active = false; return }
+    ptr.current = { startY: e.touches[0].clientY, active: true }
+  }
+  const onTouchMove = (e) => {
+    if (!ptr.current.active || refreshing) return
+    const dy = e.touches[0].clientY - ptr.current.startY
+    if (dy <= 0) { setPull(0); return }
+    setPull(Math.min(dy * 0.5, 95))   // damped so it feels rubbery
+  }
+  const onTouchEnd = async () => {
+    if (!ptr.current.active) return
+    ptr.current.active = false
+    if (pull >= PTR_THRESHOLD && !refreshing) {
+      setRefreshing(true)
+      setPull(PTR_THRESHOLD)
+      // Min visible duration so the spinner doesn't just flash on a fast refetch.
+      try { await Promise.all([refetch(), new Promise(r => setTimeout(r, 500))]) }
+      finally { setRefreshing(false); setPull(0) }
+    } else {
+      setPull(0)
+    }
+  }
 
   useEffect(() => {
     const fn = () => setMobile(window.innerWidth < 768)
@@ -306,10 +368,40 @@ export default function Layout({ children }) {
           </div>
         )}
 
-        <div style={{ flex:1, overflowY:'auto', paddingBottom: mobile ? '68px' : '0' }}>
-          {children}
+        <div
+          ref={scrollRef}
+          onTouchStart={mobile ? onTouchStart : undefined}
+          onTouchMove={mobile ? onTouchMove : undefined}
+          onTouchEnd={mobile ? onTouchEnd : undefined}
+          style={{
+            flex:1, overflowY:'auto', paddingBottom: mobile ? '68px' : '0',
+            position:'relative',
+            // Stop the browser's own pull-to-refresh (Chrome Android reloads the
+            // whole page) so only OUR gesture runs.
+            overscrollBehaviorY: mobile ? 'contain' : 'auto',
+          }}
+        >
+          {/* Pull indicator — sits at the visible top (we only pull when scrollTop is 0). */}
+          {mobile && (pull > 0 || refreshing) && (
+            <div style={{ position:'absolute', top:0, left:0, right:0, display:'flex', justifyContent:'center', pointerEvents:'none', zIndex:5 }}>
+              <div style={{
+                marginTop: Math.max(6, pull - 20),
+                opacity: refreshing ? 1 : Math.min(pull / PTR_THRESHOLD, 1),
+                transition: ptr.current.active ? 'none' : 'all 0.25s ease',
+              }}>
+                <RefreshSpinner spinning={refreshing} angle={pull * 4} ready={pull >= PTR_THRESHOLD} />
+              </div>
+            </div>
+          )}
+          <div style={{
+            transform: pull ? `translateY(${pull}px)` : 'none',
+            transition: ptr.current.active ? 'none' : 'transform 0.25s ease',
+          }}>
+            {children}
+          </div>
         </div>
       </main>
+      <style>{`@keyframes ptrspin { to { transform: rotate(360deg) } }`}</style>
 
       {/* ── Mobile bottom nav ───────────────────────────────── */}
       {mobile && (

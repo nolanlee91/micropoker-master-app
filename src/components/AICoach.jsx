@@ -382,7 +382,7 @@ function LeakNudge({ nAnalyzed, leaks, onOpen }) {
 // the "aha" in one click — kills the hidden "what do I even paste?" friction.
 // Written the way a live rec player actually tells a story (free text, not a form).
 const EXAMPLE_HAND = `1/3 live, $500 effective. I'm on the BTN with Qs Js.
-UTG is a tight live reg — when he jams a river, he has it.
+UTG is a quiet, passive reg.
 UTG opens to $15, I call.
 Flop Qh Jd 4h, pot ~$33. UTG checks, I bet $20 with top two pair, he calls.
 Turn 8h — the flush gets there. UTG leads out $55, I call.
@@ -714,17 +714,23 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
-  // First-run demo: show the example hand + its (hardcoded) analysis INSTANTLY —
-  // no API call, no Pro-model wait. The fastest possible path to the aha.
+  // First-run demo: the analysis is hardcoded (no API), but we replay the SAME
+  // beats as a real hand — paste → instant deterministic read → a few seconds of
+  // "thinking" → result — so a first-timer isn't jolted by the speed gap when they
+  // later analyze a real hand on the (slower) Pro model.
   const showExample = useCallback(() => {
     if (loading) return
     setLoadedHand(null)
     setInput('')
-    setInstantRead(null)
-    setMessages([
-      { role:'user', content: EXAMPLE_HAND },
-      { role:'assistant', type:'analysis', content: EXAMPLE_ANALYSIS.summary, analysis: EXAMPLE_ANALYSIS },
-    ])
+    setMessages([{ role:'user', content: EXAMPLE_HAND }])
+    const { hole, board } = extractCardsFromText(EXAMPLE_HAND)
+    const handEval = hole.length >= 2 ? evaluateHeroHand(hole, board) : null
+    setInstantRead(buildInstantRead(handEval, hole, board))
+    setLoading(true)
+    setTimeout(() => {
+      setMessages(prev => [...prev, { role:'assistant', type:'analysis', content: EXAMPLE_ANALYSIS.summary, analysis: EXAMPLE_ANALYSIS }])
+      setLoading(false)   // the !loading effect clears the instant-read banner
+    }, 4000)
   }, [loading, setMessages])
 
   const resultStr = loadedHand ? fmtResult(loadedHand.result) : null

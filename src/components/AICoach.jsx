@@ -382,11 +382,11 @@ function LeakNudge({ nAnalyzed, leaks, onOpen }) {
 // the "aha" in one click — kills the hidden "what do I even paste?" friction.
 // Written the way a live rec player actually tells a story (free text, not a form).
 const EXAMPLE_HAND = `1/3 live, $500 effective. I'm on the BTN with Qs Js.
-UTG is a tight reg — bets his hands, rarely bluffs.
+UTG is a tight live reg — when he jams a river, he has it.
 UTG opens to $15, I call.
-Flop Qh Jd 4h, pot ~$33. I flop top two pair. UTG bets $20, I call.
-Turn 7c. UTG bets $55, I call.
-River 3h — a third heart completes the flush. UTG jams $180 into ~$160. What should I do?`
+Flop Qh Jd 4h, pot ~$33. UTG checks, I bet $20 with top two pair, he calls.
+Turn 8h — the flush gets there. UTG leads out $55, I call.
+River 2c. UTG jams $180 into ~$180. What should I do?`
 
 // Hardcoded analysis for the example hand so the first-run demo is INSTANT (no
 // API round-trip, no Pro-model wait, works even if /api/coach is down). Mirrors
@@ -395,15 +395,15 @@ River 3h — a third heart completes the flush. UTG jams $180 into ~$160. What s
 // demo is unambiguously instructive.
 const EXAMPLE_ANALYSIS = {
   heroHandStrength: 'Two Pair, Queens and Jacks',
-  boardTexture:     'three-flush (hearts) — the flush completes on the river',
-  actionLine:       'UTG opens $15, BTN calls. Flop Qh Jd 4h: bet $20, call. Turn 7c: bet $55, call. River 3h (3rd heart, flush completes): UTG jams $180 into ~$160 (~$180 effective).',
-  summary:          'Fold. The third heart completes the flush, and a tight reg who rarely bluffs is not jamming the river without it.',
-  biggestMistake:   'Calling the river — your two pair beats only bluffs here, and this player does not have them.',
+  boardTexture:     'three-flush (hearts) — flush completes on the turn',
+  actionLine:       'UTG opens $15, BTN calls. Flop Qh Jd 4h: UTG checks, hero bets $20, UTG calls. Turn 8h (flush in): UTG leads $55, hero calls. River 2c: UTG jams $180 into ~$180 (~$180 effective).',
+  summary:          'Fold. He check-called the flop, then led the turn the moment the flush arrived and jams the river — in live cash that line is the flush almost every time.',
+  biggestMistake:   'Calling the river — the check-call-then-lead-into-the-scare-card line is a made flush; two pair beats only bluffs he rarely has.',
   mistakeType:      'overcall',
   leak_category:    'river_call_too_wide',
   ev_impact:        -180,
   confidence:       'high',
-  whyWrong:         'He bet every street and jammed exactly when the flush came in. His value range is flushes and sets — two pair is ahead of nothing he plays this way, so calling just pays off the flush.',
+  whyWrong:         'Live players underbluff big rivers. He check-called the flop on the draw, took the lead the instant the third heart hit, and jammed the river — that sequencing is a made flush. Two pair only beats bluffs, which he rarely has. (The turn call was already optimistic.)',
   betterLine:       'Fold.',
 }
 

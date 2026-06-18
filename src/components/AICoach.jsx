@@ -382,11 +382,11 @@ function LeakNudge({ nAnalyzed, leaks, onOpen }) {
 // the "aha" in one click — kills the hidden "what do I even paste?" friction.
 // Written the way a live rec player actually tells a story (free text, not a form).
 const EXAMPLE_HAND = `1/3 live, $500 effective. I'm on the BTN with Qs Js.
-UTG is a tight, passive nit — never bluffs, folds too much.
+UTG is a tight reg — bets his hands, rarely bluffs.
 UTG opens to $15, I call.
 Flop Qh Jd 4h, pot ~$33. I flop top two pair. UTG bets $20, I call.
-Turn 7h — three hearts now. UTG bets $55, I call.
-River 2h — four hearts on the board. UTG suddenly jams $180 into ~$160. What should I do?`
+Turn 7c. UTG bets $55, I call.
+River 3h — a third heart completes the flush. UTG jams $180 into ~$160. What should I do?`
 
 // Hardcoded analysis for the example hand so the first-run demo is INSTANT (no
 // API round-trip, no Pro-model wait, works even if /api/coach is down). Mirrors
@@ -395,15 +395,15 @@ River 2h — four hearts on the board. UTG suddenly jams $180 into ~$160. What s
 // demo is unambiguously instructive.
 const EXAMPLE_ANALYSIS = {
   heroHandStrength: 'Two Pair, Queens and Jacks',
-  boardTexture:     'four-flush board (hearts) — very wet',
-  actionLine:       'UTG opens $15, BTN calls. Flop Qh Jd 4h: bet $20, call. Turn 7h (3 hearts): bet $55, call. River 2h (4th heart): UTG jams $180 into ~$160 (~$180 effective).',
-  summary:          'Fold. Your two pair is drawing dead to any flush, and a passive nit is not jamming a four-heart board without one.',
-  biggestMistake:   'Calling the river jam — paying off the completed flush on a four-heart board against a player who never bluffs.',
+  boardTexture:     'three-flush (hearts) — the flush completes on the river',
+  actionLine:       'UTG opens $15, BTN calls. Flop Qh Jd 4h: bet $20, call. Turn 7c: bet $55, call. River 3h (3rd heart, flush completes): UTG jams $180 into ~$160 (~$180 effective).',
+  summary:          'Fold. The third heart completes the flush, and a tight reg who rarely bluffs is not jamming the river without it.',
+  biggestMistake:   'Calling the river — your two pair beats only bluffs here, and this player does not have them.',
   mistakeType:      'overcall',
   leak_category:    'river_call_too_wide',
   ev_impact:        -180,
   confidence:       'high',
-  whyWrong:         'A tight, passive nit who never bluffs jams this board with a flush almost every time. Two pair only beats a bluff or worse two pair — neither is in his range here, so the call is money lost.',
+  whyWrong:         'He bet every street and jammed exactly when the flush came in. His value range is flushes and sets — two pair is ahead of nothing he plays this way, so calling just pays off the flush.',
   betterLine:       'Fold.',
 }
 

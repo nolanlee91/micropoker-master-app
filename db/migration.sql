@@ -118,6 +118,36 @@ create policy "subscriptions_read_own" on subscriptions
 -- Webhook maps a Stripe customer back to a user — index that lookup.
 create index if not exists subscriptions_customer_idx on subscriptions (stripe_customer_id);
 
+-- ── 4c. Coach usage (anti-abuse daily cap) ───────────────────
+-- Counts AI Coach calls per user per day. NOT a sales gate — a high ceiling a
+-- real player never reaches; it just caps spam that would burn the model quota.
+create table if not exists coach_usage (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  day     date not null,
+  count   int  not null default 0,
+  primary key (user_id, day)
+);
+
+alter table coach_usage enable row level security;
+
+-- Read own only; the counter is bumped via the security-definer function below.
+create policy "coach_usage_read_own" on coach_usage
+  for select using (auth.uid() = user_id);
+
+-- Atomically increment today's counter and return the new value (avoids races).
+create or replace function public.bump_coach_usage(p_user uuid)
+returns int language plpgsql security definer set search_path = public as $$
+declare new_count int;
+begin
+  insert into coach_usage (user_id, day, count)
+  values (p_user, current_date, 1)
+  on conflict (user_id, day)
+  do update set count = coach_usage.count + 1
+  returning count into new_count;
+  return new_count;
+end;
+$$;
+
 -- ── 5. Account deletion (required by the App Store) ──────────
 -- Lets a signed-in user permanently delete their own account.
 -- Deleting the auth.users row cascades to profiles, sessions and

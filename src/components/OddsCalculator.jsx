@@ -66,15 +66,53 @@ function bestHand(hole, board) {
   return best
 }
 
-// villains = array of 2-card arrays
-// Returns equity for hero + each villain as array
-function simulate(heroHole, villains, board, iters = 4000) {
-  const allKnown = [...heroHole, ...villains.flat(), ...board]
-  const used = new Set(allKnown)
-  const avail = DECK.filter(c => !used.has(c))
+// All k-card combinations of arr (iterative — used only for small k).
+function kCombinations(arr, k) {
+  if (k === 0) return [[]]
+  if (k > arr.length) return []
+  const res = []
+  const idx = Array.from({ length: k }, (_, i) => i)
+  while (true) {
+    res.push(idx.map(i => arr[i]))
+    let i = k - 1
+    while (i >= 0 && idx[i] === arr.length - k + i) i--
+    if (i < 0) break
+    idx[i]++
+    for (let j = i + 1; j < k; j++) idx[j] = idx[j - 1] + 1
+  }
+  return res
+}
 
-  const n = 1 + villains.length  // hero + villains
-  const scores = new Array(n).fill(0)  // equity accumulators (fractional for ties)
+// Score one fully-dealt board for hero + villains, splitting ties fractionally.
+function scoreBoard(heroHole, villains, runBoard, scores) {
+  const hands = [bestHand(heroHole, runBoard)]
+  for (const v of villains) hands.push(v.length === 2 ? bestHand(v, runBoard) : -1)
+  const best = Math.max(...hands)
+  const winners = hands.filter(h => h === best).length
+  hands.forEach((h, idx) => { if (h === best) scores[idx] += 1 / winners })
+}
+
+// EXACT equity — enumerate every remaining board runout. Used only when all
+// villain hands are known and ≤2 board cards are missing (turn/river), where the
+// combo count is tiny (≤~1000). Result is exact and deterministic — no run-to-run
+// jitter, the number is the same every time.
+function enumerateExact(heroHole, villains, board) {
+  const used = new Set([...heroHole, ...villains.flat(), ...board])
+  const avail = DECK.filter(c => !used.has(c))
+  const runouts = kCombinations(avail, 5 - board.length)
+  const scores = new Array(1 + villains.length).fill(0)
+  for (const fill of runouts) scoreBoard(heroHole, villains, [...board, ...fill], scores)
+  const total = runouts.length || 1
+  return scores.map(s => Math.round((s / total) * 1000) / 10)
+}
+
+// MONTE CARLO — for cases enumeration can't cheaply cover (a random villain, or
+// ≥3 unknown board cards). 20k iterations → ~±0.35% std error (was 4k → ~±0.8%).
+function simulate(heroHole, villains, board, iters = 20000) {
+  const used = new Set([...heroHole, ...villains.flat(), ...board])
+  const avail = DECK.filter(c => !used.has(c))
+  const need = 5 - board.length
+  const scores = new Array(1 + villains.length).fill(0)
 
   for (let i = 0; i < iters; i++) {
     const deck = [...avail]
@@ -82,29 +120,26 @@ function simulate(heroHole, villains, board, iters = 4000) {
       const k = Math.floor(Math.random() * (j + 1));
       [deck[j], deck[k]] = [deck[k], deck[j]]
     }
-    const needed = 5 - board.length
-    const runBoard = [...board, ...deck.slice(0, needed)]
-    const di = needed
-
-    // Score all players
-    const hands = [bestHand(heroHole, runBoard)]
-    for (let vi = 0; vi < villains.length; vi++) {
-      let vHole = villains[vi]
-      if (vHole.length < 2) {
-        // random villain — pick 2 cards from remaining deck
-        vHole = deck.slice(di + vi * 2, di + vi * 2 + 2)
-      }
-      hands.push(vHole.length === 2 ? bestHand(vHole, runBoard) : -1)
-    }
-
-    const best = Math.max(...hands)
-    const winners = hands.filter(h => h === best).length
-    hands.forEach((h, idx) => {
-      if (h === best) scores[idx] += 1 / winners
+    const runBoard = [...board, ...deck.slice(0, need)]
+    // Deal any random villains from the remaining deck (sequential, no overlap).
+    let di = need
+    const filled = villains.map(v => {
+      if (v.length === 2) return v
+      const picked = deck.slice(di, di + 2); di += 2; return picked
     })
+    scoreBoard(heroHole, filled, runBoard, scores)
   }
-
   return scores.map(s => Math.round((s / iters) * 1000) / 10)
+}
+
+// Pick exact enumeration when it's both cheap and exact, else Monte Carlo.
+function computeEquity(heroHole, villains, board) {
+  const hasRandom = villains.some(v => v.length < 2)
+  const need = 5 - board.length
+  if (!hasRandom && need <= 2) {
+    return { equities: enumerateExact(heroHole, villains, board), method: 'exact' }
+  }
+  return { equities: simulate(heroHole, villains, board), method: 'monte' }
 }
 
 // ── Playing card component — white bg, black/red suits ────────────────────────
@@ -377,11 +412,11 @@ export default function OddsCalculator() {
     if (heroCards.length < 2) return
     setRunning(true)
     setTimeout(() => {
-      const activeVillains = villains  // pass all, simulate handles partial
-      const equities = simulate(heroCards, activeVillains, boardCards)
+      const { equities, method } = computeEquity(heroCards, villains, boardCards)
       const handScore = bestHand(heroCards, boardCards)
       setResult({
         equities,           // [heroEquity, villain0Equity, villain1Equity, ...]
+        method,             // 'exact' (enumerated) | 'monte' (simulated)
         villainCount: villains.length,
         hand: boardCards.length >= 3 ? HAND_NAMES[Math.floor(handScore / B5)] : null,
       })
@@ -448,7 +483,7 @@ export default function OddsCalculator() {
 
       <div>
         <h1 style={{ fontSize: '1.3rem', fontWeight: 700, color: '#E6EDF3', letterSpacing: '-0.02em', marginBottom: '3px' }}>Odds Calculator</h1>
-        <p style={{ fontSize: '0.72rem', color: '#7D8590' }}>Monte Carlo · 4,000 iterations</p>
+        <p style={{ fontSize: '0.72rem', color: '#7D8590' }}>Exact on turn &amp; river · Monte Carlo otherwise</p>
       </div>
 
       {/* Card slots — players on one row, board below */}
@@ -514,7 +549,12 @@ export default function OddsCalculator() {
 
           {/* Equity bar */}
           <div style={{ background: 'rgba(30,37,48,0.6)', backdropFilter: 'blur(16px)', border: '1px solid #21262D', borderRadius: '10px', padding: '16px 18px' }}>
-            <div style={{ fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7D8590', marginBottom: '12px' }}>Equity Distribution</div>
+            <div style={{ fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7D8590', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Equity Distribution</span>
+              <span style={{ color: result.method === 'exact' ? '#54e98a' : '#7D8590', letterSpacing: '0.06em' }}>
+                {result.method === 'exact' ? '✓ Exact' : 'Monte Carlo · 20k'}
+              </span>
+            </div>
             <div style={{ display: 'flex', height: '8px', borderRadius: '4px', overflow: 'hidden', gap: '2px' }}>
               <div style={{ width: `${result.equities[0]}%`, background: 'linear-gradient(90deg,#54e98a,#2db866)', borderRadius: '4px 0 0 4px', transition: 'width 0.5s', boxShadow: '0 0 8px rgba(84,233,138,0.5)' }} />
               {villains.map((_, idx) => (

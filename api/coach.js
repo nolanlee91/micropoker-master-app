@@ -87,6 +87,40 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'No message content provided' })
   }
 
+  // ── Layer 3: cheap input guard (analysis only) ─────────────────────────────
+  // The persona already deflects off-topic CONTENT, but every refusal still costs
+  // a model call. Reject obviously non-poker prompts HERE, before spending the
+  // (pricier) analysis call — so weather/code spam costs $0.
+  if (isAnalysis) {
+    const handText = rawMessages.filter(m => m.role === 'user').map(m => m.content).join(' ')
+    if (!looksLikePoker(handText)) {
+      return res.status(200).json({
+        type:  'reply',
+        reply: "I only analyze poker hands. Paste a hand — your cards, position, and the action — and I'll find your leaks.",
+      })
+    }
+  }
+
+  // ── Layer 2: per-user daily anti-abuse cap ─────────────────────────────────
+  // A high ceiling a real player never hits; it just stops spam from burning the
+  // model quota. Best-effort: if the counter is unavailable, fail open (don't
+  // block a paying user over an infra hiccup). Counts analysis + follow-up.
+  const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const DAILY_CAP    = parseInt(process.env.COACH_DAILY_CAP || '40', 10)
+  if (SERVICE_ROLE) {
+    try {
+      const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
+      const { data: count, error: capErr } = await admin.rpc('bump_coach_usage', { p_user: user.id })
+      if (!capErr && typeof count === 'number' && count > DAILY_CAP) {
+        return res.status(429).json({
+          error: `Daily limit reached (${DAILY_CAP} hands). Come back tomorrow — this keeps the AI fast for everyone.`,
+        })
+      }
+    } catch (e) {
+      console.warn('[coach] usage cap skipped:', e.message)
+    }
+  }
+
   // ── Build hand context string (for follow-up) ─────────────────────────────
   let handContextStr = ''
   if (hand_context) {
@@ -209,9 +243,14 @@ ${langGuideFollowUp[responseLang] ? '\n' + langGuideFollowUp[responseLang] : ''}
 
   const systemText = isAnalysis ? analysisSystemText : followUpSystemText
 
+  // The structured hand analysis is the paid product, so it gets the stronger
+  // reasoning model (deeper on multi-street spots). Follow-up Q&A stays on flash —
+  // simpler turns, far cheaper, fast.
+  const model = isAnalysis ? 'gemini-2.5-pro' : 'gemini-2.5-flash'
+
   try {
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -219,11 +258,11 @@ ${langGuideFollowUp[responseLang] ? '\n' + langGuideFollowUp[responseLang] : ''}
           system_instruction: { parts: [{ text: systemText }] },
           contents,
           generationConfig: {
-            // gemini-2.5-flash is a *thinking* model: reasoning tokens count toward
-            // maxOutputTokens. The analysis prompt asks for multi-step reasoning, so
-            // 4096 could be exhausted on thinking and truncate the JSON mid-field
-            // (→ parse fail → raw JSON shown). 8192 leaves room for thinking + output.
-            maxOutputTokens: 8192,
+            // Both 2.5 models are *thinking* models: reasoning tokens count toward
+            // maxOutputTokens. 2.5-pro (analysis) reasons more deeply, so give it more
+            // headroom or the JSON can truncate mid-field (→ parse fail → raw shown).
+            // Follow-up on flash keeps the smaller ceiling.
+            maxOutputTokens: isAnalysis ? 16384 : 8192,
             // Analysis at temp 0 → far less run-to-run drift in the verdict, the
             // reasoning, and the EV number for the same hand (was 0.2 → noticeably
             // different explanations each call). Follow-up keeps a little warmth.
@@ -305,6 +344,28 @@ ${langGuideFollowUp[responseLang] ? '\n' + langGuideFollowUp[responseLang] : ''}
     console.error('[coach] error:', err.message)
     return res.status(500).json({ error: err.message || 'Coach unavailable. Please try again.' })
   }
+}
+
+// ── Lightweight "is this actually a poker hand?" check ──────────────────────
+// Lenient by design: real hands (notation OR live-story text) easily pass; only
+// clearly off-topic prompts ("what's the weather") fail. Two signals — either is
+// enough: (a) ≥2 card tokens like "Ah Kd", or (b) ≥2 poker vocabulary hits.
+function looksLikePoker(text) {
+  if (!text || typeof text !== 'string') return false
+  const cardTokens = (text.match(/\b(10|[2-9tjqka])[shdc]\b/gi) || []).length
+  if (cardTokens >= 2) return true
+  const t = text.toLowerCase()
+  const KW = [
+    'fold','call','raise','rais','bet','check','flop','turn','river','preflop','pre-flop',
+    'blind','button','btn','utg','cutoff','hijack',' bb',' sb','pot','stack','effective',
+    'all-in','all in','jam','shove','3-bet','3bet','4-bet','c-bet','cbet','villain','hero',
+    'suited','offsuit','pocket','trips',' set','flush','straight','overpair','kicker','board',
+    'nit','tag','lag','fish','limp','squeeze','pot odds','equity','range','poker','hand',
+    'ace','king','queen','jack','aces','kings','queens',
+  ]
+  let hits = 0
+  for (const w of KW) { if (t.includes(w) && ++hits >= 2) return true }
+  return false
 }
 
 // ── JSON extraction: tries multiple strategies ──────────────────────────────

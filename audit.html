@@ -125,7 +125,7 @@
   <div class="verdict-row"><span>Còn lại để thu tiền THẬT</span><span class="v">Bật Stripe <b>Live mode</b> (việc kinh doanh)</span></div>
   <div class="verdict-row"><span>🔴 P0 + 🟠 P1</span><span class="v yes">✅ Hoàn tất</span></div>
   <div class="verdict-row"><span>⚠️ RISK (rủi ro moat & giữ chân)</span><span class="v yes">✅ 5/5 code xong · RISK-5 chặn leak ảo (advice vs post-mortem)</span></div>
-  <div class="verdict-row"><span>📈 GROWTH (giữ chân / MRR)</span><span class="v" style="color:var(--growth)">3/4 — fix plan động + debrief + mốc 3-hand xong · GROWTH-3 (Quiz) còn lại</span></div>
+  <div class="verdict-row"><span>📈 GROWTH (giữ chân / MRR)</span><span class="v yes">✅ 4/4 — fix plan động · debrief · mốc 3-hand · drill nhắm leak</span></div>
 </div>
 
 <div class="progress-wrap" id="progress"></div>
@@ -276,10 +276,11 @@ const ITEMS = [
     desc:'Đòn bẩy #1 reviewer nêu cho GIÁ TRỊ ĐỊNH KỲ: dân live có nhịp tự nhiên là "tối qua chơi 5h". Cho dán/kể cả buổi → ra một bản đọc cấp session (mood, các spot rò rỉ chính, 1 điều sửa cho buổi tới). Biến Pro từ "insight one-time" thành "thói quen hàng tuần" → đây mới là MRR bền.',
     files:['src/components/Debrief.jsx (mới)','api/coach.js (request_type session_debrief)','App.jsx (route /debrief)','Layout.jsx (nav Debrief)'],
     fix:'Đã làm v1: tab riêng, gom theo ngày, AI đọc cấp-session, Pro-gated, cache. V2 (sau, cần data thật): lưu debrief vào DB để so sánh tuần-qua-tuần + nhắc "debrief buổi tối qua" sau khi phân tích trong Coach.' },
-  { id:'GROWTH-3', sev:'growth', title:'Nối Quiz vào leak của user ("river-call rộng → drill 5 spot")',
-    desc:'Cầu retention hiển nhiên. Quiz.jsx (1100+ dòng) đang "parked", range GTO cố định, KHÔNG nối leak. Reviewer chỉ đúng: leak #1 của user → bộ spot luyện đúng leak đó → vòng lặp "phát hiện → luyện → đo lại giảm". Gắn kết Coach ↔ Leak ↔ Quiz.',
-    files:['Quiz.jsx (parked, chưa nối leak)','utils/leaks.js (category → bộ câu hỏi)'],
-    fix:'Map mỗi leak_category → tập spot luyện; từ Leak Profile thêm CTA "Drill this leak". Cần hồi sinh + tái cấu trúc Quiz — feature lớn, làm sau GROWTH-2.' },
+  { id:'GROWTH-3', sev:'growth', done:true, status:'DONE', notes:'2026-06-18. NỐI Coach↔Leak↔Quiz. Tạo utils/drills.js: mỗi leak_category → generator CORRECT-BY-CONSTRUCTION (deal spot → eval bằng handEvaluator thật → chỉ emit khi đáp án textbook rõ ràng, không bao giờ ra hand gây tranh cãi). 5 họ generator phủ 9 leak: bluff-catcher (one pair MARGINAL trên board KHÔNG đôi + wet → fold), value bet (two-pair+ hero góp bài → bet), bluff discipline (air river vs sticky → check), draw pot-odds (đúng theo toán), preflop range (đúng theo GTO data). buildDrillQueue(leak,6). Quiz.jsx: QuizSession nhận queue ngoài + drillLabel + onReplay; mở qua /quiz?drill=<leak>; thêm section "Drill your leaks" trên dashboard từ computeLeaks của chính user. LeakProfile: nút "Drill this leak →" mỗi leak (free leak #1 cũng drill được = mồi). BỎ paywall sai (drill free, không gate). Verify: 10 test drills (mọi leak sinh đủ 6 câu, đúng 1 đáp án) + 24 test handEvaluator = 34/34 pass. Build pass.',
+    title:'Nối Quiz vào leak của user — drill nhắm leak',
+    desc:'Cầu retention hiển nhiên. Quiz.jsx (1100+ dòng) "parked", range GTO cố định, KHÔNG nối leak. Reviewer chỉ đúng: leak của user → bộ spot luyện đúng leak đó → vòng lặp "phát hiện → luyện → đo lại giảm".',
+    files:['utils/drills.js (mới — generator nhắm leak + buildDrillQueue)','utils/drills.test.js (mới — 10 test)','Quiz.jsx (drill mode + "Drill your leaks")','LeakProfile.jsx ("Drill this leak" CTA)'],
+    fix:'Đã làm. Tái dùng session UI/gamification, sửa luôn các điểm yếu đã nêu (đáp án đúng-chắc, bỏ premise range-advantage tù mù, không paywall). CÒN: nội dung bank còn cơ bản — có thể mở rộng độ đa dạng spot sau; đo "leak giảm sau khi drill" cần analytics.' },
   { id:'GROWTH-4', sev:'growth', done:true, status:'DONE', notes:'2026-06-18. Hạ mốc mở khoá Leak Profile 5 → 3 hand (hằng số UNLOCK_HANDS ở leaks.js, dùng lại khắp LeakProfile: revealed, thẻ "N/3", progress bar, preview "at 3 hands"). Lý do KHÔNG cần analytics: phản hồi trực tiếp của người chơi cash ("5 hand = nhiều tuần với volume của tôi") chính là tín hiệu. Không phá honesty: caveat "early read" (<10 hand) + preview "patterns taking shape" (RISK-1/2/3) vẫn nguyên, càng hợp lý ở mẫu nhỏ. Con số TỐI ƯU (3 hay 4) tinh chỉnh sau khi có funnel data. Build pass.',
     title:'Hạ/đưa sớm "aha" cấp pattern cho dân volume thấp',
     desc:'Live grinder cuối tuần chỉ 2–3 hand đáng nhập/buổi → 5 hand = nhiều tuần, trend ≥10 hand gần như không kích. Cân nhắc: aha cấp pattern sớm hơn, hoặc gom theo CHỦ ĐỀ (vd "3 hand river của bạn đều fold-được") thay vì chờ đủ số. Cẩn thận: đừng phá honesty mẫu-nhỏ của RISK-1/2.',

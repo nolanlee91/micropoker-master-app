@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
-import { TrendingDown, TrendingUp, Lock, BrainCircuit, ArrowRight, Minus, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
+import { TrendingDown, TrendingUp, Lock, BrainCircuit, ArrowRight, Minus, Sparkles, ChevronDown, ChevronUp, Target } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { usePro } from '../hooks/usePro'
 import { supabase } from '../lib/supabase'
 import { computeLeaks, computeLeakTrends, analyzedCount, recurringCount, LEAK_LABELS, UNLOCK_HANDS } from '../utils/leaks'
+import { isDrillable } from '../utils/drills'
 import Paywall from './Paywall'
 
 // Personalized fix-plans are generated from the user's own hands (an API call), so
@@ -258,7 +259,8 @@ export default function LeakProfile() {
                 </div>
                 {/* Fix plan — Pro only */}
                 {!locked && (
-                  isPro ? (
+                  <>
+                  {isPro ? (
                     <div style={{ marginTop:'10px', paddingTop:'10px', borderTop:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:'10px' }}>
                       {/* Quick static tip — instant, always shown */}
                       <div style={{ display:'flex', gap:'8px' }}>
@@ -310,7 +312,14 @@ export default function LeakProfile() {
                       <Lock size={12} color={C.textMuted} />
                       <span style={{ fontSize:'0.74rem', color:C.textMuted, fontStyle:'italic' }}>Personalized fix plan locked</span>
                     </div>
-                  )
+                  )}
+                  {/* GROWTH-3: practice the exact leak with targeted drills */}
+                  {isDrillable(l.category) && (
+                    <button onClick={() => navigate(`/quiz?drill=${l.category}`)} style={{ marginTop:'10px', alignSelf:'flex-start', display:'flex', alignItems:'center', gap:'6px', padding:'8px 12px', borderRadius:'9px', border:`1px solid ${C.border}`, background:C.surfaceHi, color:C.secondary, fontSize:'0.74rem', fontWeight:700, cursor:'pointer' }}>
+                      <Target size={13} /> Drill this leak →
+                    </button>
+                  )}
+                  </>
                 )}
               </div>
             )

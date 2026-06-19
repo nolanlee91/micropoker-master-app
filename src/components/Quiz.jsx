@@ -3,10 +3,14 @@
  * 9-max Cash, 100bb effective stacks only.
  * Pipeline: generate spot → solve → validate → build choices → render.
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Flame, Clock, CheckCircle, XCircle, Trophy, ArrowLeft, Lock, RotateCcw, ChevronRight } from 'lucide-react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { Flame, Clock, CheckCircle, XCircle, Trophy, ArrowLeft, Lock, RotateCcw, ChevronRight, Target } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { celebrate, feedbackWrong } from '../utils/feedback'
+import { useData } from '../context/DataContext'
+import { computeLeaks, LEAK_LABELS } from '../utils/leaks'
+import { buildDrillQueue, drillTitle, isDrillable } from '../utils/drills'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -751,9 +755,9 @@ const MIXED_QUEUE = [
   'advanced','advanced','advanced','advanced','advanced',
 ]
 const TOTAL_Q = MIXED_QUEUE.length
-const TIMER_BY_TIER = { beginner:20, intermediate:60, advanced:60 }
-const TIER_LABELS   = { beginner:'Easy', intermediate:'Medium', advanced:'Hard' }
-const TIER_COLORS   = { beginner:C.primary, intermediate:'#92ccff', advanced:'#b06aff' }
+const TIMER_BY_TIER = { beginner:20, intermediate:60, advanced:60, drill:45 }
+const TIER_LABELS   = { beginner:'Easy', intermediate:'Medium', advanced:'Hard', drill:'Drill' }
+const TIER_COLORS   = { beginner:C.primary, intermediate:'#92ccff', advanced:'#b06aff', drill:C.primary }
 
 function buildQueue() {
   const q = []
@@ -766,8 +770,9 @@ function buildQueue() {
   return q
 }
 
-function QuizSession({ onBack, consume }) {
-  const [queue]    = useState(() => buildQueue())
+function QuizSession({ onBack, consume, queue: externalQueue, drillLabel, onReplay }) {
+  const [queue]    = useState(() => externalQueue || buildQueue())
+  const total      = queue.length
   const [qIdx,     setQIdx]    = useState(0)
   const [selected, setSelected]= useState(null)
   const [score,    setScore]   = useState(0)
@@ -783,7 +788,7 @@ function QuizSession({ onBack, consume }) {
     if (selected !== null) return
     setSelected('__timeout__')
     setTimerOn(false)
-    consume(tier, false, score)
+    consume?.(tier, false, score)
     setStreak(0)
   }, [selected, score, tier])
 
@@ -799,13 +804,13 @@ function QuizSession({ onBack, consume }) {
     // Core-loop reward: confetti only on a hot streak so it stays special
     if (ok) celebrate({ confetti: newStreak >= 3 })
     else feedbackWrong()
-    consume(tier, ok, newScore)
+    consume?.(tier, ok, newScore)
     setScore(newScore)
     setStreak(newStreak)
   }
 
   const handleNext = () => {
-    if (qIdx + 1 >= TOTAL_Q) { setDone(true); return }
+    if (qIdx + 1 >= total) { setDone(true); return }
     setQIdx(i => i + 1)
     setSelected(null)
     setTimerOn(true)
@@ -813,11 +818,12 @@ function QuizSession({ onBack, consume }) {
 
   // ── Done screen ─────────────────────────────────────────────────────────────
   if (done || qIdx >= queue.length) {
-    const pct = Math.round((score / TOTAL_Q) * 100)
+    const pct = Math.round((score / total) * 100)
     return (
       <div style={{ display:'flex', flexDirection:'column', gap:'14px', alignItems:'center', textAlign:'center', padding:'16px 0' }}>
         <Trophy size={36} color={C.primary}/>
-        <div style={{ fontSize:'2rem', fontWeight:700, color:C.primary, letterSpacing:'-0.02em' }}>{score}/{TOTAL_Q}</div>
+        {drillLabel && <div style={{ fontSize:'0.7rem', fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase', color:C.primary }}>{drillLabel} drill</div>}
+        <div style={{ fontSize:'2rem', fontWeight:700, color:C.primary, letterSpacing:'-0.02em' }}>{score}/{total}</div>
         <div style={{ fontSize:'0.82rem', color:C.textMuted }}>
           {pct >= 80 ? 'Excellent! Sharp instincts.' : pct >= 60 ? 'Good work. Keep drilling.' : "Keep going — you'll improve!"}
         </div>
@@ -825,21 +831,20 @@ function QuizSession({ onBack, consume }) {
           <Flame size={14} color={streak >= 3 ? '#ff7c2a' : C.textMuted}/>
           <span style={{ fontSize:'0.78rem', color:streak >= 3 ? '#ff7c2a' : C.textMuted, fontWeight:600 }}>Streak: {streak}</span>
         </div>
-        {/* Score breakdown */}
-        <div style={{ width:'100%', background:C.surfaceHigh, borderRadius:'10px', padding:'12px 16px', display:'flex', justifyContent:'space-around' }}>
-          {[['Easy','beginner',2],['Medium','intermediate',3],['Hard','advanced',5]].map(([label, t, total]) => {
-            const tScore = queue.slice(0, qIdx+1).filter((_,i) => queue[i]?.tier===t && selected!==null).length
-            return (
+        {/* Score breakdown — mixed quiz only */}
+        {!drillLabel && (
+          <div style={{ width:'100%', background:C.surfaceHigh, borderRadius:'10px', padding:'12px 16px', display:'flex', justifyContent:'space-around' }}>
+            {[['Easy','beginner',2],['Medium','intermediate',3],['Hard','advanced',5]].map(([label, t, cnt]) => (
               <div key={t} style={{ textAlign:'center' }}>
                 <div style={{ fontSize:'0.55rem', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:TIER_COLORS[t], marginBottom:'4px' }}>{label}</div>
-                <div style={{ fontSize:'1rem', fontWeight:700, color:C.text }}>{total}q</div>
+                <div style={{ fontSize:'1rem', fontWeight:700, color:C.text }}>{cnt}q</div>
               </div>
-            )
-          })}
-        </div>
+            ))}
+          </div>
+        )}
         <div style={{ width:'100%', display:'flex', flexDirection:'column', gap:'8px' }}>
-          <button onClick={() => window.location.reload()} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'12px', borderRadius:'8px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', minHeight:'44px', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 14px rgba(84,233,138,0.2)' }}>
-            <RotateCcw size={14}/> Play Again
+          <button onClick={() => (onReplay ? onReplay() : window.location.reload())} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'12px', borderRadius:'8px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', minHeight:'44px', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 14px rgba(84,233,138,0.2)' }}>
+            <RotateCcw size={14}/> {drillLabel ? 'Drill Again' : 'Play Again'}
           </button>
           <button onClick={onBack} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'11px', borderRadius:'8px', border:'none', background:C.surfaceHigh, color:C.textMuted, fontWeight:600, fontSize:'0.82rem', cursor:'pointer', minHeight:'44px' }}>
             <ArrowLeft size={14}/> Back
@@ -863,10 +868,10 @@ function QuizSession({ onBack, consume }) {
         <div style={{ flex:1 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
             <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
-              <span style={{ fontSize:'0.6rem', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:tierColor, padding:'2px 7px', borderRadius:'10px', background:`rgba(${tier==='beginner'?'84,233,138':tier==='intermediate'?'146,204,255':'176,106,255'},0.12)` }}>
-                {TIER_LABELS[tier]}
+              <span style={{ fontSize:'0.6rem', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:tierColor, padding:'2px 7px', borderRadius:'10px', background:`rgba(${tier==='beginner'||tier==='drill'?'84,233,138':tier==='intermediate'?'146,204,255':'176,106,255'},0.12)` }}>
+                {drillLabel || TIER_LABELS[tier]}
               </span>
-              <span style={{ fontSize:'0.6rem', color:C.textMuted }}>{qIdx+1}/{TOTAL_Q}</span>
+              <span style={{ fontSize:'0.6rem', color:C.textMuted }}>{qIdx+1}/{total}</span>
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:'5px' }}>
               <Clock size={11} color={timeLeft<=5?C.red:C.textMuted}/>
@@ -879,7 +884,7 @@ function QuizSession({ onBack, consume }) {
           </div>
           {/* Progress bar */}
           <div style={{ height:'3px', background:C.border, borderRadius:'2px', overflow:'hidden' }}>
-            <div style={{ width:`${(qIdx/TOTAL_Q)*100}%`, height:'100%', background:C.secondary, borderRadius:'2px', transition:'width 0.3s' }}/>
+            <div style={{ width:`${(qIdx/total)*100}%`, height:'100%', background:C.secondary, borderRadius:'2px', transition:'width 0.3s' }}/>
           </div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:'3px', flexShrink:0 }}>
@@ -949,7 +954,7 @@ function QuizSession({ onBack, consume }) {
             </div>
           )}
           <button onClick={handleNext} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'12px', borderRadius:'8px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', minHeight:'44px', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 14px rgba(84,233,138,0.2)' }}>
-            {qIdx+1>=TOTAL_Q?'See Results →':'Next Question →'}
+            {qIdx+1>=total?'See Results →':'Next Question →'}
           </button>
         </div>
       )}
@@ -1038,11 +1043,36 @@ function getLevel(xp){let lv=0;for(let i=0;i<LEVELS.length;i++)if(xp>=LEVELS[i].
 
 export default function Quiz() {
   const dp = useDailyProgress()
-  const [active, setActive] = useState(false)
+  const { hands } = useData()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [active, setActive]       = useState(false)
+  const [drillLeak, setDrillLeak] = useState(null)
+  const [sessionKey, setSessionKey] = useState(0)   // bump to remount with a fresh queue
 
   useEffect(() => {
     window.resetQuizLimit = () => { dp.resetAll(); window.location.reload() }
   }, [])
+
+  // Deep-link from the Leak Profile: /quiz?drill=<leak_category>
+  useEffect(() => {
+    const d = searchParams.get('drill')
+    if (d && isDrillable(d)) { setDrillLeak(d); setActive(true) }
+  }, [searchParams])
+
+  // GROWTH-3: the player's actual leaks, surfaced as drills right here.
+  const leaks = useMemo(() => computeLeaks(hands), [hands])
+  const drillableLeaks = leaks.filter(l => isDrillable(l.category)).slice(0, 4)
+
+  const drillQueue = useMemo(
+    () => (drillLeak ? buildDrillQueue(drillLeak, 6) : null),
+    [drillLeak, sessionKey]
+  )
+
+  const startDrill = (leak) => { setDrillLeak(leak); setActive(true) }
+  const exitSession = () => {
+    setActive(false); setDrillLeak(null)
+    if (searchParams.get('drill')) { searchParams.delete('drill'); setSearchParams(searchParams, { replace: true }) }
+  }
 
   const lv = getLevel(dp.xp)
   const progress = lv.next ? ((dp.xp - lv.xp) / (lv.next.xp - lv.xp)) * 100 : 100
@@ -1051,8 +1081,12 @@ export default function Quiz() {
     return (
       <div style={{ padding:'16px', paddingBottom:'120px', maxWidth:'720px', margin:'0 auto', paddingTop:'20px' }}>
         <QuizSession
-          onBack={() => setActive(false)}
-          consume={dp.consume}
+          key={sessionKey}
+          onBack={exitSession}
+          onReplay={() => setSessionKey(k => k + 1)}
+          consume={drillLeak ? undefined : dp.consume}
+          queue={drillLeak ? drillQueue : undefined}
+          drillLabel={drillLeak ? drillTitle(drillLeak) : undefined}
         />
       </div>
     )
@@ -1064,6 +1098,31 @@ export default function Quiz() {
         <h1 style={{ fontSize:'1.3rem', fontWeight:700, color:C.text, letterSpacing:'-0.02em', marginBottom:'4px' }}>Quiz</h1>
         <p style={{ fontSize:'0.72rem', color:C.textMuted }}>10 questions · 2 Easy + 3 Medium + 5 Hard</p>
       </div>
+
+      {/* GROWTH-3: drill YOUR leaks — the bridge from Coach → Leak Profile → practice. */}
+      {drillableLeaks.length > 0 && (
+        <div style={{ background:C.surface, border:`1px solid ${C.primaryBorder}`, borderRadius:'12px', padding:'16px', marginBottom:'20px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'7px', marginBottom:'12px' }}>
+            <Target size={15} color={C.primary} />
+            <span style={{ fontSize:'0.78rem', fontWeight:700, color:C.text }}>Drill your leaks</span>
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+            {drillableLeaks.map(l => (
+              <button key={l.category} onClick={() => startDrill(l.category)} style={{
+                display:'flex', alignItems:'center', gap:'10px', padding:'11px 12px', borderRadius:'9px',
+                border:`1px solid ${C.border}`, background:C.surfaceHigh, cursor:'pointer', textAlign:'left',
+              }}>
+                <span style={{ fontSize:'0.8rem', fontWeight:600, color:C.text, flex:1 }}>{LEAK_LABELS[l.category] || l.category}</span>
+                <span style={{ fontSize:'0.62rem', color:C.primary, fontWeight:700 }}>{drillTitle(l.category)}</span>
+                <ChevronRight size={15} color={C.textMuted} />
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize:'0.62rem', color:C.textMuted, marginTop:'10px', lineHeight:1.5 }}>
+            From your Leak Profile — 6 targeted spots each. Practice the exact spots costing you money.
+          </div>
+        </div>
+      )}
 
       {/* XP + Streak */}
       <div style={{ background:C.surfaceHigh, borderRadius:'8px', padding:'10px 14px', marginBottom:'20px', display:'flex', alignItems:'center', gap:'12px' }}>

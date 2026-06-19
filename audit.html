@@ -122,7 +122,7 @@
   <div class="verdict-row"><span>Giá Pro</span><span class="v" style="color:var(--accent)">$9.99/th · $83.99/năm</span></div>
   <div class="verdict-row"><span>Còn lại để thu tiền THẬT</span><span class="v">Bật Stripe <b>Live mode</b> (việc kinh doanh)</span></div>
   <div class="verdict-row"><span>🔴 P0 + 🟠 P1</span><span class="v yes">✅ Hoàn tất</span></div>
-  <div class="verdict-row"><span>⚠️ RISK (rủi ro moat & giữ chân)</span><span class="v" style="color:var(--risk)">2/4 — RISK-1,2 xong · RISK-3,4 chờ analytics</span></div>
+  <div class="verdict-row"><span>⚠️ RISK (rủi ro moat & giữ chân)</span><span class="v yes">✅ 4/4 code xong · còn lại chờ analytics/user thật</span></div>
 </div>
 
 <div class="progress-wrap" id="progress"></div>
@@ -241,11 +241,13 @@ const ITEMS = [
     desc:'ev_impact do Gemini ước lượng (có grounding theo pot/bet thật nên đúng hướng) — KHÔNG phải solver. Cộng dồn ra "$X mất vì leak này". Cùng 1 hand chạy lại có thể ra số hơi khác. Tay non không nhận ra; nhưng nếu soi kỹ thấy số nhảy → niềm tin sụt. UI hiện không nói rõ đây là ước lượng.',
     files:['api/coach.js (ev_impact từ model)','utils/leaks.js (cộng dồn EV)','LeakProfile.jsx (hiển thị $ như số chốt)'],
     fix:'Tăng độ trung thực, rẻ: (a) gắn nhãn "ước tính" / dùng dấu "~" cho số tiền; (b) làm tròn để không tỏ ra chính xác giả (vd ~$40 thay vì $38.50); (c) cache ev_impact của từng hand → cùng hand không đổi số giữa các lần xem. Không hứa "solver-accurate" ở bất kỳ đâu.' },
-  { id:'RISK-3', sev:'risk', title:'Cần 5 hand mới mở Leak Profile — người siêu lười rớt trước "khoảnh khắc trả tiền"',
+  { id:'RISK-3', sev:'risk', done:true, status:'DONE', notes:'2026-06-18. Phần làm-được-không-cần-analytics: thêm "early signals preview" vào thẻ 1–4 hand — hé N pattern đang hình thành (tên leak BLUR + khóa), framing trung thực "taking shape", "Ranked, with $ cost, at 5 hands". Tạo curiosity gap kéo user dán tiếp mà KHÔNG khẳng định leak từ mẫu nhỏ (hợp RISK-1) và KHÔNG đổi mốc mở khóa 5 hand. (a) progress "N/5" đã có sẵn từ trước. CÒN CHỜ DATA: có nên hạ mốc/hé teaser sớm hơn nữa không → quyết định khi có analytics đo % user đạt 5 hand (đừng đoán mò). Build pass.',
+    title:'Cần 5 hand mới mở Leak Profile — người siêu lười rớt trước "khoảnh khắc trả tiền"',
     desc:'Moat (Leak Profile + paywall) chỉ xuất hiện sau khi dán đủ ~5 hand. Nhẹ hơn form card-picker cũ rất nhiều, nhưng tay lười vẫn có thể dán 1–2 hand rồi biến TRƯỚC khi chạm value/paywall. Cần đưa "tín hiệu giá trị sắp tới" lên sớm hơn.',
     files:['utils/leaks.js (ngưỡng n để recurring/profile)','LeakProfile.jsx (teaser theo n)','AICoach.jsx (empty state)'],
     fix:'(a) Ngay sau hand ĐẦU TIÊN show progress rõ "1/5 hand → còn 4 hand nữa mở Leak Profile"; (b) cân nhắc hé 1 leak teaser sớm hơn (vd sau 3 hand) để kéo về paywall; (c) đo funnel: % user đạt 5 hand (cần analytics). Một phần cần data thật mới chốt ngưỡng.' },
-  { id:'RISK-4', sev:'risk', title:'Giữ chân sau tháng 1 — mua 1 tháng đọc fix plan rồi huỷ',
+  { id:'RISK-4', sev:'risk', done:true, status:'DONE', notes:'2026-06-18. Build "Leak Trend" (computeLeakTrends ở leaks.js): chia hand đã phân tích theo thời gian (date=created_at) thành nửa cũ vs nửa mới, so tần suất mỗi leak → chip improving/creeping up/steady cạnh mỗi dòng leak (CHỈ Pro). Gate TREND_MIN_HANDS=10 (đủ ≥5 mỗi cửa sổ) → dưới ngưỡng trả {} nên không bao giờ hiện nhiễu (hợp honesty RISK-1/2). Thêm dòng giải thích "Trend compares recent vs earlier analyzed hands". Giờ perk Paywall "Watch your leaks shrink over time" đã có tính năng thật chống lưng (hết overclaim) → cho user lý do trả TIẾP. CÒN CHỜ DATA/USER: annual nudge + đo churn thật. Build pass.',
+    title:'Giữ chân sau tháng 1 — mua 1 tháng đọc fix plan rồi huỷ',
     desc:'Pro mở khóa fix plan khá tĩnh → user có thể trả 1 tháng "lấy đáp án" rồi cancel. "Watch leaks shrink over time" là móc giữ chân DUY NHẤT nhưng còn mỏng: chưa có cơ chế đo & cho thấy leak giảm theo thời gian một cách rõ ràng. Đây là retention dài hạn — không gấp bằng RISK-1/2.',
     files:['LeakProfile.jsx (FIX_TIPS tĩnh)','utils/leaks.js (chưa so sánh leak theo thời gian)'],
     fix:'(a) "Leak trend": so tần suất/$ của từng leak kỳ này vs kỳ trước → cho user thấy tiến bộ = lý do trả tiếp; (b) nội dung Pro động (leak mới lộ ra khi trình lên); (c) annual nudge cho ai đã thấy value. Làm sau RISK-1/2/3.' },

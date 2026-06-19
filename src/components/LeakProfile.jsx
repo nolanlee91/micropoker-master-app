@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
-import { TrendingDown, Lock, BrainCircuit, ArrowRight } from 'lucide-react'
+import { TrendingDown, TrendingUp, Lock, BrainCircuit, ArrowRight, Minus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { usePro } from '../hooks/usePro'
-import { computeLeaks, analyzedCount, recurringCount, LEAK_LABELS } from '../utils/leaks'
+import { computeLeaks, computeLeakTrends, analyzedCount, recurringCount, LEAK_LABELS } from '../utils/leaks'
 import Paywall from './Paywall'
 
 const C = {
@@ -36,6 +36,23 @@ function estDollars(totalEv) {
   return Math.round(a / step) * step
 }
 
+// Retention hook (RISK-4): a tiny up/down chip showing whether a leak is appearing
+// less (improving) or more (creeping up) in recent hands vs earlier. Pro-only value.
+function TrendChip({ t }) {
+  if (!t) return null
+  const map = {
+    improving: { Icon: TrendingDown, color: '#54e98a',  label: 'improving'  },
+    worsening: { Icon: TrendingUp,   color: '#f47067',  label: 'creeping up' },
+    steady:    { Icon: Minus,        color: '#7D8590',  label: 'steady'      },
+  }
+  const { Icon, color, label } = map[t.trend] || map.steady
+  return (
+    <span title={`Earlier ${t.earlierCount} → recent ${t.recentCount}`} style={{ display:'flex', alignItems:'center', gap:'3px', fontSize:'0.58rem', fontWeight:700, color, whiteSpace:'nowrap' }}>
+      <Icon size={11} /> {label}
+    </span>
+  )
+}
+
 function Empty({ navigate }) {
   return (
     <div style={{ padding:'48px 24px', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', gap:'14px' }}>
@@ -65,7 +82,9 @@ export default function LeakProfile() {
 
   const nAnalyzed = useMemo(() => analyzedCount(hands), [hands])
   const leaks     = useMemo(() => computeLeaks(hands),  [hands])
+  const trends    = useMemo(() => computeLeakTrends(hands), [hands])
   const nRecurring = recurringCount(leaks)
+  const hasTrends = Object.keys(trends).length > 0
 
   // Returning from Stripe Checkout (success_url = /leaks?checkout=success):
   // the webhook may have just granted Pro, so re-read entitlement + clean the URL.
@@ -112,6 +131,25 @@ export default function LeakProfile() {
           <div style={{ height:'8px', borderRadius:'4px', background:'rgba(255,255,255,0.06)', overflow:'hidden' }}>
             <div style={{ width:`${Math.min(nAnalyzed/5*100,100)}%`, height:'100%', background:C.primary, transition:'width 0.4s' }} />
           </div>
+          {/* RISK-3: curiosity gap before the 5-hand unlock. Show that real patterns
+              are already forming (blurred + locked) so a lazy user has a concrete
+              reason to paste the next hand — without asserting a leak from a tiny
+              sample (kept tentative: "taking shape", unlocks at 5). */}
+          {leaks.length > 0 && (
+            <div style={{ display:'flex', flexDirection:'column', gap:'7px', padding:'11px 12px', borderRadius:'10px', background:C.surfaceHi, border:`1px solid ${C.border}` }}>
+              <div style={{ fontSize:'0.62rem', fontWeight:800, letterSpacing:'0.07em', textTransform:'uppercase', color:C.textMuted }}>
+                {leaks.length} pattern{leaks.length>1?'s':''} taking shape
+              </div>
+              {leaks.slice(0,2).map((l, i) => (
+                <div key={l.category} style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                  <span style={{ fontSize:'0.7rem', fontWeight:800, color:C.textMuted, width:'12px' }}>{i+1}</span>
+                  <span style={{ flex:1, fontSize:'0.8rem', fontWeight:600, color:C.text, filter:'blur(5px)', userSelect:'none' }}>{LEAK_LABELS[l.category] || l.category}</span>
+                  <Lock size={11} color={C.textMuted} />
+                </div>
+              ))}
+              <div style={{ fontSize:'0.66rem', color:C.textMuted }}>Ranked, with $ cost, at 5 hands.</div>
+            </div>
+          )}
           {/* Selection-bias nudge: the profile is only as honest as the hands fed in.
               Pushing variety here is the cheapest guard against a "disasters-only" sample. */}
           <div style={{ fontSize:'0.72rem', color:C.textMuted, lineHeight:1.55 }}>
@@ -158,6 +196,7 @@ export default function LeakProfile() {
                   <span style={{ fontSize:'0.6rem', fontWeight: l.recurring ? 700 : 400, color: l.recurring ? C.primary : C.textMuted }}>
                     {l.recurring ? `×${l.count} recurring` : `${l.count} hand`}
                   </span>
+                  {isPro && !locked && <TrendChip t={trends[l.category]} />}
                   <span style={{ fontSize:'0.95rem', fontWeight:800, color:C.red, fontVariantNumeric:'tabular-nums', minWidth:'62px', textAlign:'right', display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'3px' }}>
                     {maskAmt ? <><Lock size={12} color={C.red} />••</> : `~$${estDollars(l.totalEv)}`}
                   </span>
@@ -210,6 +249,12 @@ export default function LeakProfile() {
 
           {error && <div style={{ fontSize:'0.74rem', color:C.red }}>{error}</div>}
 
+          {/* RISK-4: explain the trend chips so "improving" isn't mistaken for a guarantee. */}
+          {isPro && hasTrends && (
+            <div style={{ fontSize:'0.66rem', color:C.textMuted, lineHeight:1.5, marginTop:'2px', opacity:0.85 }}>
+              Trend compares how often each leak shows up in your recent analyzed hands vs your earlier ones.
+            </div>
+          )}
           {/* RISK-2: be upfront that $ are AI estimates, not solver output. */}
           <div style={{ fontSize:'0.66rem', color:C.textMuted, lineHeight:1.5, marginTop:'2px', opacity:0.85 }}>
             $ figures are AI estimates based on the real pot and bet sizes in each hand — directional, not solver-exact.

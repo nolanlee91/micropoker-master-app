@@ -49,3 +49,34 @@ export function recurringCount(leaks) {
 export function analyzedCount(hands) {
   return (hands || []).filter(h => h.leakCategory || h.aiAnalysis).length
 }
+
+// Minimum analyzed hands before a trend means anything (≥5 per window). Below this
+// the two halves are too small and the trend is just noise.
+export const TREND_MIN_HANDS = 10
+
+// Per-leak trend: is a leak showing up MORE or LESS in your recent analyzed hands vs
+// your earlier ones? This is the retention hook (RISK-4) — proof a leak is actually
+// shrinking, not just a static fix tip. Splits analyzed hands by date into an earlier
+// and a recent half and compares how often each leak appears. Count-based (not EV,
+// which is noisy). Returns {} below TREND_MIN_HANDS so callers never show noise.
+export function computeLeakTrends(hands) {
+  const valid = (hands || [])
+    .filter(h => h.evImpact != null && h.leakCategory && h.leakCategory !== 'no_clear_leak')
+    .slice()
+    .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0))
+  if (valid.length < TREND_MIN_HANDS) return {}
+  const mid = Math.floor(valid.length / 2)
+  const countBy = (arr) => {
+    const m = {}
+    for (const h of arr) m[h.leakCategory] = (m[h.leakCategory] || 0) + 1
+    return m
+  }
+  const earlier = countBy(valid.slice(0, mid))
+  const recent  = countBy(valid.slice(mid))
+  const out = {}
+  for (const c of new Set([...Object.keys(earlier), ...Object.keys(recent)])) {
+    const ec = earlier[c] || 0, rc = recent[c] || 0
+    out[c] = { trend: rc < ec ? 'improving' : rc > ec ? 'worsening' : 'steady', earlierCount: ec, recentCount: rc }
+  }
+  return out
+}

@@ -1,11 +1,27 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
-import { TrendingDown, TrendingUp, Lock, BrainCircuit, ArrowRight, Minus } from 'lucide-react'
+import { TrendingDown, TrendingUp, Lock, BrainCircuit, ArrowRight, Minus, Sparkles } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { usePro } from '../hooks/usePro'
+import { supabase } from '../lib/supabase'
 import { computeLeaks, computeLeakTrends, analyzedCount, recurringCount, LEAK_LABELS } from '../utils/leaks'
 import Paywall from './Paywall'
+
+// Personalized fix-plans are generated from the user's own hands (an API call), so
+// cache them locally keyed by leak + how many hands fed it — regenerate only when the
+// sample grows. Avoids paying for / waiting on a regenerate on every visit.
+const FIX_CACHE = 'mpm-leakfix-v1'
+const readFixCache = (cat, count) => {
+  try { return (JSON.parse(localStorage.getItem(FIX_CACHE) || '{}'))[`${cat}:${count}`] || null } catch { return null }
+}
+const writeFixCache = (cat, count, plan) => {
+  try {
+    const all = JSON.parse(localStorage.getItem(FIX_CACHE) || '{}')
+    all[`${cat}:${count}`] = plan
+    localStorage.setItem(FIX_CACHE, JSON.stringify(all))
+  } catch {}
+}
 
 const C = {
   bg:'#0B0E14', surface:'#161B22', surfaceHi:'#1E2530', border:'#21262D',
@@ -79,6 +95,39 @@ export default function LeakProfile() {
   const [showPaywall, setShowPaywall] = useState(false)
   const [linking, setLinking] = useState(false)
   const [error, setError] = useState('')
+  const [fixPlans, setFixPlans] = useState({})   // { [category]: { loading, data, error } }
+
+  // GROWTH-1: generate a fix plan from the user's OWN hands in this leak (the paid
+  // payoff — replaces the static one-liner that every user used to share). Cached by
+  // (category, hand-count) so it only re-runs when the player logs more hands.
+  const genFix = useCallback(async (category, count) => {
+    setFixPlans(p => ({ ...p, [category]: { loading: true, error: '' } }))
+    try {
+      const catHands = (hands || [])
+        .filter(h => h.leakCategory === category && h.evImpact != null)
+        .map(h => ({ holeCards: h.holeCards, boardCards: h.boardCards, evImpact: h.evImpact, aiAnalysis: h.aiAnalysis, notes: h.notes }))
+      const { data: { session } } = await supabase.auth.getSession()
+      const headers = { 'Content-Type': 'application/json' }
+      if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
+      const res = await fetch('/api/coach', {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          request_type: 'leak_fix',
+          leak_category: category,
+          leak_hands: catHands,
+          response_language: localStorage.getItem('aicoach-language') || 'English',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not build your plan.')
+      const plan = data.leakFix || { summary: '', steps: [], drill: '' }
+      if (!plan.steps || plan.steps.length === 0) throw new Error('Could not build your plan. Try again.')
+      writeFixCache(category, count, plan)
+      setFixPlans(p => ({ ...p, [category]: { loading: false, data: plan } }))
+    } catch (e) {
+      setFixPlans(p => ({ ...p, [category]: { loading: false, error: e.message || 'Could not build your plan.' } }))
+    }
+  }, [hands])
 
   const nAnalyzed = useMemo(() => analyzedCount(hands), [hands])
   const leaks     = useMemo(() => computeLeaks(hands),  [hands])
@@ -172,6 +221,7 @@ export default function LeakProfile() {
       {/* Revealed */}
       {revealed && !proLoading && (
         <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+          <style>{`@keyframes lpspin { to { transform: rotate(360deg) } }`}</style>
           {/* Honesty caveat: the ranking reflects self-selected hands, and a small
               sample over-weights whatever the user happened to paste. Say so plainly
               instead of presenting an early read as the whole truth (RISK-1). */}
@@ -186,6 +236,8 @@ export default function LeakProfile() {
           {leaks.map((l, i) => {
             const locked = !isPro && i > 0          // free: only leak #1 visible
             const maskAmt = !isPro                  // free: $ masked everywhere
+            const fixState = fixPlans[l.category] || {}
+            const plan = fixState.data || (isPro && !locked ? readFixCache(l.category, l.count) : null)
             return (
               <div key={l.category} style={{ padding:'14px', borderRadius:'12px', background:C.surface, border:`1px solid ${i===0 ? C.primaryBorder : C.border}`, position:'relative' }}>
                 <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
@@ -204,14 +256,48 @@ export default function LeakProfile() {
                 {/* Fix plan — Pro only */}
                 {!locked && (
                   isPro ? (
-                    <div style={{ marginTop:'10px', paddingTop:'10px', borderTop:`1px solid ${C.border}`, display:'flex', gap:'8px' }}>
-                      <span style={{ fontSize:'0.56rem', fontWeight:800, letterSpacing:'0.08em', color:C.primary, marginTop:'2px' }}>FIX</span>
-                      <span style={{ fontSize:'0.78rem', color:C.text, lineHeight:1.5 }}>{FIX_TIPS[l.category] || ''}</span>
+                    <div style={{ marginTop:'10px', paddingTop:'10px', borderTop:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:'10px' }}>
+                      {/* Quick static tip — instant, always shown */}
+                      <div style={{ display:'flex', gap:'8px' }}>
+                        <span style={{ fontSize:'0.56rem', fontWeight:800, letterSpacing:'0.08em', color:C.primary, marginTop:'2px' }}>FIX</span>
+                        <span style={{ fontSize:'0.78rem', color:C.text, lineHeight:1.5 }}>{FIX_TIPS[l.category] || ''}</span>
+                      </div>
+
+                      {/* Personalized plan built from THIS player's hands (GROWTH-1) */}
+                      {plan ? (
+                        <div style={{ display:'flex', flexDirection:'column', gap:'8px', padding:'11px 12px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}` }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+                            <Sparkles size={12} color={C.primary} />
+                            <span style={{ fontSize:'0.56rem', fontWeight:800, letterSpacing:'0.08em', color:C.primary }}>YOUR PLAN</span>
+                          </div>
+                          {plan.summary && <div style={{ fontSize:'0.78rem', color:C.text, lineHeight:1.5 }}>{plan.summary}</div>}
+                          <ol style={{ margin:0, paddingLeft:'18px', display:'flex', flexDirection:'column', gap:'5px' }}>
+                            {(plan.steps || []).map((s, si) => (
+                              <li key={si} style={{ fontSize:'0.76rem', color:C.text, lineHeight:1.5 }}>{s}</li>
+                            ))}
+                          </ol>
+                          {plan.drill && (
+                            <div style={{ fontSize:'0.74rem', color:C.secondary, lineHeight:1.5, marginTop:'2px' }}>
+                              <span style={{ fontWeight:700 }}>Next session: </span>{plan.drill}
+                            </div>
+                          )}
+                        </div>
+                      ) : fixState.loading ? (
+                        <div style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'0.74rem', color:C.textMuted }}>
+                          <div style={{ width:'14px', height:'14px', border:`2px solid ${C.primaryBorder}`, borderTopColor:C.primary, borderRadius:'50%', animation:'lpspin 0.8s linear infinite' }} />
+                          Studying your {l.count} {l.category.replace(/_/g,' ')} hand{l.count>1?'s':''}…
+                        </div>
+                      ) : (
+                        <button onClick={() => genFix(l.category, l.count)} style={{ alignSelf:'flex-start', display:'flex', alignItems:'center', gap:'6px', padding:'8px 12px', borderRadius:'9px', border:`1px solid ${C.primaryBorder}`, background:C.primaryDim, color:C.primary, fontSize:'0.74rem', fontWeight:700, cursor:'pointer' }}>
+                          <Sparkles size={13} /> Build my fix plan from these {l.count} hand{l.count>1?'s':''} →
+                        </button>
+                      )}
+                      {fixState.error && <div style={{ fontSize:'0.72rem', color:C.red }}>{fixState.error}</div>}
                     </div>
                   ) : (
                     <div style={{ marginTop:'10px', paddingTop:'10px', borderTop:`1px solid ${C.border}`, display:'flex', gap:'8px', alignItems:'center', opacity:0.7 }}>
                       <Lock size={12} color={C.textMuted} />
-                      <span style={{ fontSize:'0.74rem', color:C.textMuted, fontStyle:'italic' }}>Fix plan locked</span>
+                      <span style={{ fontSize:'0.74rem', color:C.textMuted, fontStyle:'italic' }}>Personalized fix plan locked</span>
                     </div>
                   )
                 )}

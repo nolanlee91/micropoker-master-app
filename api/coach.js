@@ -33,6 +33,8 @@ export default async function handler(req, res) {
     verifiedHeroHandStrength, verifiedBestFiveCards, verifiedBoardTexture,
     // follow-up explicit fields
     request_type, question, hand_context, response_language,
+    // personalized leak fix-plan fields
+    leak_category, leak_hands,
   } = req.body
 
   console.log('[coach] received:', { request_type, isHandAnalysis, msgCount: messages?.length })
@@ -44,7 +46,8 @@ export default async function handler(req, res) {
 
   // Determine mode
   const isFollowUp = request_type === 'follow_up'
-  const isAnalysis = isHandAnalysis === true && !isFollowUp
+  const isLeakFix  = request_type === 'leak_fix'
+  const isAnalysis = isHandAnalysis === true && !isFollowUp && !isLeakFix
 
   // Game type & villain read are no longer structured inputs — the model reads them
   // from the hand text. Only language remains a normalised setting.
@@ -60,6 +63,12 @@ export default async function handler(req, res) {
     English:    '',
     Vietnamese: 'IMPORTANT: Write answer and keyTakeaway in Vietnamese. Do NOT translate JSON keys or the confidence value.',
     Chinese:    'IMPORTANT: Write answer and keyTakeaway in Simplified Chinese. Do NOT translate JSON keys or the confidence value.',
+  }
+
+  const langGuideLeakFix = {
+    English:    '',
+    Vietnamese: 'IMPORTANT: Write summary, every step, and drill in Vietnamese. Do NOT translate JSON keys.',
+    Chinese:    'IMPORTANT: Write summary, every step, and drill in Simplified Chinese. Do NOT translate JSON keys.',
   }
 
   const LEAK_CATEGORIES = [
@@ -80,6 +89,26 @@ export default async function handler(req, res) {
   // For follow-up: if we have question but it's not in messages yet, append it
   if (isFollowUp && question && !rawMessages.some(m => m.content === question)) {
     contents.push({ role: 'user', parts: [{ text: question }] })
+  }
+
+  // For a leak fix-plan: the content is the player's OWN hands tagged with this leak,
+  // so the model writes a plan grounded in their actual tendencies (not a lookup line).
+  if (isLeakFix) {
+    const cat = String(leak_category || '').trim()
+    const handLines = (Array.isArray(leak_hands) ? leak_hands : [])
+      .slice(0, 12)
+      .map((h, i) => {
+        const hole  = Array.isArray(h.holeCards) ? h.holeCards.join('') : ''
+        const board = Array.isArray(h.boardCards) && h.boardCards.length ? h.boardCards.join(' ') : '—'
+        const ev    = typeof h.evImpact === 'number'
+          ? (h.evImpact > 0 ? `+$${Math.round(h.evImpact)}` : `-$${Math.abs(Math.round(h.evImpact))}`)
+          : ''
+        const note  = h.aiAnalysis?.biggestMistake || h.aiAnalysis?.summary || h.notes || ''
+        return `${i + 1}. ${hole || '??'} on ${board} ${ev} — ${String(note).slice(0, 160)}`
+      })
+      .join('\n')
+    contents.length = 0
+    contents.push({ role: 'user', parts: [{ text: `Leak category: ${cat || 'unknown'}\n\nMy hands tagged with this leak:\n${handLines || '(no hand detail available)'}` }] })
   }
 
   // Gemini requires at least one content item
@@ -241,7 +270,26 @@ Rules:
   aggressive, nits rarely bluff) using standard population tendencies.
 ${langGuideFollowUp[responseLang] ? '\n' + langGuideFollowUp[responseLang] : ''}`
 
-  const systemText = isAnalysis ? analysisSystemText : followUpSystemText
+  const leakFixSystemText = `You are a sharp poker coach writing a PERSONAL fix plan for ONE recurring leak, based on the player's OWN hands listed below. This is the paid payoff — it must read like you studied THEIR hands, not a generic tip.
+
+CRITICAL: Return ONLY a JSON object. No text before or after. No markdown. No code fences. No backticks.
+
+Required format:
+{
+  "summary": "One sentence naming the specific pattern you actually see across THESE hands — reference the common thread (positions, lines, board types, villain types).",
+  "steps": ["3 to 4 concrete actions doable at the table. Each must reference the player's real tendency from the hands above, not one-size-fits-all advice.", "..."],
+  "drill": "One concrete thing to consciously do in the next session to break this leak."
+}
+
+Rules:
+- Only output the JSON. Nothing else.
+- Be SPECIFIC to these hands. If they keep calling river jams in position with one pair, say exactly that. If the sample is thin, say what the few hands suggest — do not pad with generic theory.
+- Each step under ~24 words. Direct, no hedging.
+- Live population reads: live players underbluff big rivers (so fold more); fish/recs call too much and rarely bluff; nits rarely bluff. Use these where relevant.
+- All amounts in dollars unless the hand says "bb".
+${langGuideLeakFix[responseLang] ? '\n' + langGuideLeakFix[responseLang] : ''}`
+
+  const systemText = isAnalysis ? analysisSystemText : isLeakFix ? leakFixSystemText : followUpSystemText
 
   // The structured hand analysis is the paid product, so it gets the stronger
   // reasoning model (deeper on multi-street spots). Follow-up Q&A stays on flash —
@@ -313,6 +361,22 @@ ${langGuideFollowUp[responseLang] ? '\n' + langGuideFollowUp[responseLang] : ''}
       return res.status(200).json({
         type:  'reply',
         reply: fallback || raw,
+      })
+    }
+
+    // ── Personalized leak fix-plan ────────────────────────────────────────────
+    if (isLeakFix) {
+      const parsed = extractJSON(raw)
+      const steps = parsed && Array.isArray(parsed.steps)
+        ? parsed.steps.filter(s => typeof s === 'string' && s.trim()).slice(0, 5)
+        : []
+      return res.status(200).json({
+        type: 'leak_fix',
+        leakFix: {
+          summary: parsed && typeof parsed.summary === 'string' ? parsed.summary : '',
+          steps,
+          drill:   parsed && typeof parsed.drill === 'string' ? parsed.drill : '',
+        },
       })
     }
 

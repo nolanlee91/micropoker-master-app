@@ -16,8 +16,8 @@ const C = {
 
 const PERKS = [
   'Full Leak Profile — every leak ranked by $ lost',
-  'Exact $ cost per leak (not blurred)',
-  'Step-by-step fix plan for each leak',
+  'The $ cost of each leak (not blurred)',
+  'A step-by-step fix plan built from your own hands',
   'Deep follow-up coaching on your leaks',
   'Watch your leaks shrink over time',
 ]

@@ -9,7 +9,7 @@
     --bg:#0B0E14; --surface:#161B22; --surfaceHi:#1E2530; --border:#21262D;
     --text:#E6EDF3; --muted:#7D8590; --primary:#54e98a; --blue:#92ccff;
     --accent:#ffc0ac; --red:#f47067;
-    --p0:#f47067; --p1:#ffb347; --p2:#92ccff; --p3:#7D8590; --risk:#d2a8ff;
+    --p0:#f47067; --p1:#ffb347; --p2:#92ccff; --p3:#7D8590; --risk:#d2a8ff; --growth:#ff9ebb;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{
@@ -65,6 +65,7 @@
   .item.ok{border-left-color:var(--primary)}
   .item.feat{border-left-color:var(--blue)}
   .item.risk{border-left-color:var(--risk)}
+  .item.growth{border-left-color:var(--growth)}
   .item.done{opacity:0.55}
   .item.done .ititle{text-decoration:line-through;text-decoration-color:var(--muted)}
   .item-head{display:flex;align-items:flex-start;gap:12px}
@@ -80,6 +81,7 @@
   .badge.ok{background:rgba(84,233,138,0.15);color:var(--primary)}
   .badge.feat{background:rgba(146,204,255,0.15);color:var(--blue)}
   .badge.risk{background:rgba(210,168,255,0.15);color:var(--risk)}
+  .badge.growth{background:rgba(255,158,187,0.15);color:var(--growth)}
   .desc{font-size:0.84rem;color:#c9d1d9;margin-top:8px}
   .desc .lbl{color:var(--muted);font-weight:600}
   .meta{font-size:0.78rem;color:var(--muted);margin-top:8px;display:flex;flex-direction:column;gap:4px}
@@ -123,6 +125,7 @@
   <div class="verdict-row"><span>Còn lại để thu tiền THẬT</span><span class="v">Bật Stripe <b>Live mode</b> (việc kinh doanh)</span></div>
   <div class="verdict-row"><span>🔴 P0 + 🟠 P1</span><span class="v yes">✅ Hoàn tất</span></div>
   <div class="verdict-row"><span>⚠️ RISK (rủi ro moat & giữ chân)</span><span class="v yes">✅ 4/4 code xong · còn lại chờ analytics/user thật</span></div>
+  <div class="verdict-row"><span>📈 GROWTH (giữ chân / MRR)</span><span class="v" style="color:var(--growth)">1/4 — GROWTH-1 (fix plan động) xong · 2,3,4 lên kế hoạch</span></div>
 </div>
 
 <div class="progress-wrap" id="progress"></div>
@@ -134,6 +137,7 @@
   <button data-f="p2">🟡 P2</button>
   <button data-f="p3">⚪ P3</button>
   <button data-f="risk">⚠️ RISK</button>
+  <button data-f="growth">📈 GROWTH</button>
   <button data-f="open">Chưa xong</button>
 </div>
 
@@ -252,8 +256,26 @@ const ITEMS = [
     desc:'Pro mở khóa fix plan khá tĩnh → user có thể trả 1 tháng "lấy đáp án" rồi cancel. "Watch leaks shrink over time" là móc giữ chân DUY NHẤT nhưng còn mỏng: chưa có cơ chế đo & cho thấy leak giảm theo thời gian một cách rõ ràng. Đây là retention dài hạn — không gấp bằng RISK-1/2.',
     files:['LeakProfile.jsx (FIX_TIPS tĩnh)','utils/leaks.js (chưa so sánh leak theo thời gian)'],
     fix:'(a) "Leak trend": so tần suất/$ của từng leak kỳ này vs kỳ trước → cho user thấy tiến bộ = lý do trả tiếp; (b) nội dung Pro động (leak mới lộ ra khi trình lên); (c) annual nudge cho ai đã thấy value. Làm sau RISK-1/2/3.' },
+
+  { id:'GROWTH-1', sev:'growth', done:true, status:'DONE', notes:'2026-06-18. SỬA OVERPROMISE THẬT: Paywall hứa "step-by-step fix plan for each leak" nhưng ship FIX_TIPS — dict 1 câu hardcode chung cho mọi user (savvy player nhận ra ngay → lý do #1 ko gia hạn). Giờ: api/coach.js thêm request_type "leak_fix" → Gemini flash đọc CHÍNH các hand của user trong leak đó (cards/board/ev/mistake) → trả {summary, steps[3-4], drill} cá nhân hoá. LeakProfile: giữ FIX 1-câu làm quick tip + nút "Build my fix plan from these N hands" → loading → render YOUR PLAN (summary + các bước + drill buổi tới). Cache localStorage theo (category,count) → chỉ regenerate khi có thêm hand, không tốn API mỗi lần xem; đếm vào daily cap. Sửa Paywall PERKS cho khớp + bỏ "Exact" còn sót (hợp RISK-2). Build + node --check pass.',
+    title:'Fix plan ĐỘNG, cá nhân hoá (thay FIX_TIPS tĩnh) — sửa overpromise Paywall',
+    desc:'<span class="lbl">Đòn bẩy #1 từ đánh giá người chơi cash.</span> "Fix plan" là thứ Pro bán đắt nhất nhưng thực ra là FIX_TIPS — 1 câu hardcode/leak, mọi user "river call too wide" nhận cùng 1 câu. Đọc 1 lần là xong → không lý do trả tháng 2. Paywall lại hứa "Step-by-step fix plan for each leak" → overpromise. Nâng cấp: AI viết plan riêng từ chính các hand của user trong leak đó.',
+    files:['api/coach.js (request_type leak_fix + leakFixSystemText)','LeakProfile.jsx (genFix + UI YOUR PLAN + cache)','Paywall.jsx (PERKS khớp thực tế)'],
+    fix:'Đã làm. Cá nhân hoá + cache theo (leak,count). CHỜ BẠN: redeploy để /api/coach có nhánh leak_fix (đã trong cùng file coach.js, Vercel tự build). Test: Pro + ≥5 hand → vào Leaks → "Build my fix plan".' },
+  { id:'GROWTH-2', sev:'growth', title:'Session debrief — đổ cả buổi tối qua → đọc cấp-session',
+    desc:'Đòn bẩy #1 reviewer nêu cho GIÁ TRỊ ĐỊNH KỲ: dân live có nhịp tự nhiên là "tối qua chơi 5h". Cho dán/kể cả buổi → ra một bản đọc cấp session (mood, các spot rò rỉ chính, 1 điều sửa cho buổi tới). Biến Pro từ "insight one-time" thành "thói quen hàng tuần" → đây mới là MRR bền.',
+    files:['AICoach.jsx hoặc màn mới','api/coach.js (request_type session_debrief)','có thể cần lưu debrief'],
+    fix:'Thiết kế: input cả buổi (nhiều hand/ghi chú) → 1 API call tổng hợp → bản đọc session + lưu lịch sử để so tuần này vs tuần trước. Là feature lớn — chốt scope với chủ trước khi build.' },
+  { id:'GROWTH-3', sev:'growth', title:'Nối Quiz vào leak của user ("river-call rộng → drill 5 spot")',
+    desc:'Cầu retention hiển nhiên. Quiz.jsx (1100+ dòng) đang "parked", range GTO cố định, KHÔNG nối leak. Reviewer chỉ đúng: leak #1 của user → bộ spot luyện đúng leak đó → vòng lặp "phát hiện → luyện → đo lại giảm". Gắn kết Coach ↔ Leak ↔ Quiz.',
+    files:['Quiz.jsx (parked, chưa nối leak)','utils/leaks.js (category → bộ câu hỏi)'],
+    fix:'Map mỗi leak_category → tập spot luyện; từ Leak Profile thêm CTA "Drill this leak". Cần hồi sinh + tái cấu trúc Quiz — feature lớn, làm sau GROWTH-2.' },
+  { id:'GROWTH-4', sev:'growth', title:'Hạ/đưa sớm "aha" cấp pattern cho dân volume thấp',
+    desc:'Live grinder cuối tuần chỉ 2–3 hand đáng nhập/buổi → 5 hand = nhiều tuần, trend ≥10 hand gần như không kích. Cân nhắc: aha cấp pattern sớm hơn, hoặc gom theo CHỦ ĐỀ (vd "3 hand river của bạn đều fold-được") thay vì chờ đủ số. Cẩn thận: đừng phá honesty mẫu-nhỏ của RISK-1/2.',
+    files:['utils/leaks.js (ngưỡng)','LeakProfile.jsx (điều kiện reveal)'],
+    fix:'Nhỏ nhưng cần cân nhắc trade-off honesty + đo bằng analytics. Một phần đã giảm đau nhờ RISK-3 (preview "patterns taking shape"). Chốt ngưỡng khi có data funnel.' },
 ];
-const SEV_LABEL = {p0:'P0',p1:'P1',p2:'P2',p3:'P3',ok:'OK',feat:'NEW',risk:'RISK'};
+const SEV_LABEL = {p0:'P0',p1:'P1',p2:'P2',p3:'P3',ok:'OK',feat:'NEW',risk:'RISK',growth:'GROWTH'};
 const STATUSES = ['TODO','IN PROGRESS','DONE','WONTFIX'];
 
 let state = JSON.parse(localStorage.getItem(STORE) || '{}');
@@ -272,7 +294,7 @@ function render(){
   const wrap = document.getElementById('items');
   wrap.innerHTML = '';
   let lastSev = '';
-  const sevNames = {p0:'🔴 P0 — Chặn việc thu phí',p1:'🟠 P1 — Niềm tin & độ chính xác',p2:'🟡 P2 — Tăng chuyển đổi',p3:'⚪ P3 — Nice-to-have',feat:'✨ Đã thêm trong session này (mới)',ok:'✅ Đã xem xét — không phải lỗi (giữ nguyên)',risk:'⚠️ RISK — Rủi ro moat & giữ chân (cần quyết định)'};
+  const sevNames = {p0:'🔴 P0 — Chặn việc thu phí',p1:'🟠 P1 — Niềm tin & độ chính xác',p2:'🟡 P2 — Tăng chuyển đổi',p3:'⚪ P3 — Nice-to-have',feat:'✨ Đã thêm trong session này (mới)',ok:'✅ Đã xem xét — không phải lỗi (giữ nguyên)',risk:'⚠️ RISK — Rủi ro moat & giữ chân (cần quyết định)',growth:'📈 GROWTH — Nâng cấp giữ chân / MRR (từ đánh giá người chơi cash)'};
   ITEMS.forEach(it=>{
     const s = get(it.id);
     if(filter!=='all'){
@@ -330,10 +352,10 @@ function bind(){
 }
 
 function renderProgress(){
-  const groups={p0:[],p1:[],p2:[],p3:[],risk:[]};
+  const groups={p0:[],p1:[],p2:[],p3:[],risk:[],growth:[]};
   ITEMS.forEach(it=>{ if(groups[it.sev]) groups[it.sev].push(it); });
-  const colors={p0:'var(--p0)',p1:'var(--p1)',p2:'var(--p2)',p3:'var(--p3)',risk:'var(--risk)'};
-  const names={p0:'🔴 P0',p1:'🟠 P1',p2:'🟡 P2',p3:'⚪ P3',risk:'⚠️ RISK'};
+  const colors={p0:'var(--p0)',p1:'var(--p1)',p2:'var(--p2)',p3:'var(--p3)',risk:'var(--risk)',growth:'var(--growth)'};
+  const names={p0:'🔴 P0',p1:'🟠 P1',p2:'🟡 P2',p3:'⚪ P3',risk:'⚠️ RISK',growth:'📈 GROWTH'};
   let html='';
   let totalDone=0,total=0;
   Object.keys(groups).forEach(g=>{

@@ -228,15 +228,24 @@ export default async function handler(req, res) {
         const notExpired   = !sub?.current_period_end || new Date(sub.current_period_end) > new Date()
         isProUser = activeStatus && notExpired
       }
-      // Day-1 activation bonus: if the free account was created today (UTC, same
-      // boundary the daily counter resets on), give the generous first-day cap;
-      // from day 2 it settles to the lean steady cap.
+      // Activation bonus keyed on the user's FIRST day USING the coach (not signup):
+      // a brand-new free user gets a generous first day to be wowed when they start
+      // testing the coach, then settles to the lean steady cap from their 2nd active
+      // day on. "First usage day" = no coach_usage row exists for any prior day
+      // (today's row may already exist from this very request, so we look at < today).
       let freeCap = CAP_FREE
-      try {
-        const createdDay = new Date(user.created_at).toISOString().slice(0, 10)
-        const todayUTC   = new Date().toISOString().slice(0, 10)
-        if (createdDay === todayUTC) freeCap = CAP_FREE_DAY1
-      } catch {}
+      if (!user.is_anonymous && !isProUser) {
+        try {
+          const todayUTC = new Date().toISOString().slice(0, 10)
+          const { data: prior } = await admin
+            .from('coach_usage')
+            .select('day')
+            .eq('user_id', user.id)
+            .lt('day', todayUTC)
+            .limit(1)
+          if (!prior || prior.length === 0) freeCap = CAP_FREE_DAY1
+        } catch {}
+      }
       const cap = user.is_anonymous ? CAP_ANON : isProUser ? CAP_PRO : freeCap
 
       const { data: count, error: capErr } = await admin.rpc('bump_coach_usage', { p_user: user.id })

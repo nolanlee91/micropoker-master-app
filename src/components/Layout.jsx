@@ -6,7 +6,7 @@ import { useData } from '../context/DataContext'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 
 const NAV = [
-  { path: '/history',  label: 'History',  icon: History },
+  { path: '/history',  label: 'Journal',  icon: History },
   { path: '/bankroll', label: 'Bankroll', icon: Wallet },
   { path: '/coach',    label: 'Coach',    icon: BrainCircuit, primary: true },
   { path: '/leaks',    label: 'Leaks',    icon: TrendingDown, primary: true },

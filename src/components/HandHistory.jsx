@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Plus, BrainCircuit, Trash2, X, Link2, Pencil } from 'lucide-react'
+import { Plus, Trash2, X, Link2, Pencil } from 'lucide-react'
 import { useData } from '../context/DataContext'
 
 const C = {
@@ -360,7 +360,7 @@ function LinkPopup({ hand, sessions, onLink, onClose }) {
 }
 
 // ── Hand Card — click body to edit, action buttons stay separate ──────────────
-function HandCard({ hand, sessions, onEdit, onDelete, onAnalyze, onLink }) {
+function HandCard({ hand, sessions, onEdit, onDelete, onLink }) {
   const [showLink, setShowLink] = useState(false)
   const navigate    = useNavigate()
   const isWin       = hand.result > 0
@@ -437,16 +437,10 @@ function HandCard({ hand, sessions, onEdit, onDelete, onAnalyze, onLink }) {
           </div>
         </div>
 
-        {/* Action row — stopPropagation so clicks don't trigger edit */}
+        {/* Action row — stopPropagation so clicks don't trigger edit. This is a
+            JOURNAL: log + note + (optional) link to a session. AI analysis lives in
+            the Coach (separate flow) — no "Analyze" bridge, so the two stay distinct. */}
         <div style={{ display:'flex', gap:'6px', padding:'6px 12px 10px 14px', borderTop:`1px solid ${C.border}` }}>
-          <button onClick={e => { e.stopPropagation(); onAnalyze(hand) }} style={{
-            display:'flex', alignItems:'center', gap:'3px', padding:'5px 10px',
-            borderRadius:'6px', border:'none', background:C.secondaryDim,
-            color:C.secondary, fontSize:'0.6rem', fontWeight:600, cursor:'pointer', minHeight:'32px',
-          }}>
-            <BrainCircuit size={10}/> Analyze
-          </button>
-
           <button onClick={e => { e.stopPropagation(); setShowLink(true) }} style={{
             display:'flex', alignItems:'center', gap:'3px', padding:'5px 10px',
             borderRadius:'6px', border:'none', background:'rgba(255,192,172,0.1)',
@@ -478,14 +472,14 @@ function HandCard({ hand, sessions, onEdit, onDelete, onAnalyze, onLink }) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-export default function HandHistory({ onAnalyze }) {
+export default function HandHistory() {
   const { hands: allHands, sessions, addHand, updateHand, deleteHand, linkHandToSession } = useData()
-  // History lists MANUALLY-logged hands only. Free-text hands analyzed in Coach are
-  // saved (for the Leak Profile) with no position/cards — exclude them here so they
-  // don't show as empty "Preflop" rows. They still power the leak profile.
+  // This is a JOURNAL of manually-logged "memorable" hands. Free-text hands analyzed
+  // in the Coach are saved separately (for the Leak Profile / Debrief) with no
+  // position/cards — exclude them here so the two pools stay distinct and this list
+  // only shows what the player chose to log.
   const hands = allHands.filter(h => h.position)
   const [formMode, setFormMode] = useState(null)
-  const navigate = useNavigate()
   const location = useLocation()
 
   // Auto-open edit form if navigated from Bankroll with state
@@ -506,8 +500,6 @@ export default function HandHistory({ onAnalyze }) {
     closeForm()
   }
 
-  const handleAnalyze = (hand) => { onAnalyze(hand); navigate('/coach') }
-
   const handleLink = async (handId, sessionId) => {
     await linkHandToSession(handId, sessionId)
   }
@@ -526,8 +518,8 @@ export default function HandHistory({ onAnalyze }) {
       {/* Header */}
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:'16px' }}>
         <div>
-          <h1 style={{ fontSize:'1.3rem', fontWeight:700, color:C.text, letterSpacing:'-0.02em', marginBottom:'3px' }}>Hand History</h1>
-          <p style={{ fontSize:'0.72rem', color:C.textMuted }}>{hands.length} hands · tap any hand to edit</p>
+          <h1 style={{ fontSize:'1.3rem', fontWeight:700, color:C.text, letterSpacing:'-0.02em', marginBottom:'3px' }}>Hand Journal</h1>
+          <p style={{ fontSize:'0.72rem', color:C.textMuted }}>Save memorable hands &amp; your own notes{hands.length ? ` · ${hands.length} logged` : ''}</p>
         </div>
         {!formMode && (
           <button onClick={openAdd} style={{
@@ -576,8 +568,12 @@ export default function HandHistory({ onAnalyze }) {
       {!formMode && (
         <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
           {hands.length === 0 && (
-            <div style={{ padding:'60px 20px', textAlign:'center', color:C.textMuted, opacity:0.4, fontSize:'0.82rem' }}>
-              No hands yet. Tap "Add Hand" to log your first.
+            <div style={{ padding:'52px 20px', textAlign:'center', color:C.textMuted, display:'flex', flexDirection:'column', gap:'8px', alignItems:'center' }}>
+              <div style={{ fontSize:'0.86rem', color:C.text, fontWeight:600 }}>Your hand journal is empty</div>
+              <div style={{ fontSize:'0.76rem', lineHeight:1.6, maxWidth:'300px' }}>
+                Tap "Add Hand" to save a memorable hand with your own notes. <br/>
+                Hands you analyze in the AI Coach aren't here — they live in your <b style={{ color:C.primary }}>Leak Profile</b> &amp; <b style={{ color:C.primary }}>Debrief</b>.
+              </div>
             </div>
           )}
           {hands.map(hand => (
@@ -587,7 +583,6 @@ export default function HandHistory({ onAnalyze }) {
               sessions={sessions}
               onEdit={openEdit}
               onDelete={async id => await deleteHand(id)}
-              onAnalyze={handleAnalyze}
               onLink={handleLink}
             />
           ))}

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
-import { TrendingDown, TrendingUp, Lock, BrainCircuit, ArrowRight, Minus, Sparkles } from 'lucide-react'
+import { TrendingDown, TrendingUp, Lock, BrainCircuit, ArrowRight, Minus, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
@@ -96,6 +96,8 @@ export default function LeakProfile() {
   const [linking, setLinking] = useState(false)
   const [error, setError] = useState('')
   const [fixPlans, setFixPlans] = useState({})   // { [category]: { loading, data, error } }
+  const [openPlans, setOpenPlans] = useState({}) // which fix plans are expanded
+  const togglePlan = (cat) => setOpenPlans(o => ({ ...o, [cat]: !o[cat] }))
 
   // GROWTH-1: generate a fix plan from the user's OWN hands in this leak (the paid
   // payoff — replaces the static one-liner that every user used to share). Cached by
@@ -124,6 +126,7 @@ export default function LeakProfile() {
       if (!plan.steps || plan.steps.length === 0) throw new Error('Could not build your plan. Try again.')
       writeFixCache(category, count, plan)
       setFixPlans(p => ({ ...p, [category]: { loading: false, data: plan } }))
+      setOpenPlans(o => ({ ...o, [category]: true }))   // auto-expand the one just built
     } catch (e) {
       setFixPlans(p => ({ ...p, [category]: { loading: false, error: e.message || 'Could not build your plan.' } }))
     }
@@ -266,20 +269,28 @@ export default function LeakProfile() {
                       {/* Personalized plan built from THIS player's hands (GROWTH-1) */}
                       {plan ? (
                         <div style={{ display:'flex', flexDirection:'column', gap:'8px', padding:'11px 12px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}` }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+                          <button onClick={() => togglePlan(l.category)} style={{ display:'flex', alignItems:'center', gap:'6px', background:'none', border:'none', padding:0, cursor:'pointer', width:'100%' }}>
                             <Sparkles size={12} color={C.primary} />
                             <span style={{ fontSize:'0.56rem', fontWeight:800, letterSpacing:'0.08em', color:C.primary }}>YOUR PLAN</span>
-                          </div>
-                          {plan.summary && <div style={{ fontSize:'0.78rem', color:C.text, lineHeight:1.5 }}>{plan.summary}</div>}
-                          <ol style={{ margin:0, paddingLeft:'18px', display:'flex', flexDirection:'column', gap:'5px' }}>
-                            {(plan.steps || []).map((s, si) => (
-                              <li key={si} style={{ fontSize:'0.76rem', color:C.text, lineHeight:1.5 }}>{s}</li>
-                            ))}
-                          </ol>
-                          {plan.drill && (
-                            <div style={{ fontSize:'0.74rem', color:C.secondary, lineHeight:1.5, marginTop:'2px' }}>
-                              <span style={{ fontWeight:700 }}>Next session: </span>{plan.drill}
-                            </div>
+                            <div style={{ flex:1 }} />
+                            {openPlans[l.category]
+                              ? <ChevronUp size={14} color={C.primary} />
+                              : <ChevronDown size={14} color={C.primary} />}
+                          </button>
+                          {openPlans[l.category] && (
+                            <>
+                              {plan.summary && <div style={{ fontSize:'0.78rem', color:C.text, lineHeight:1.5 }}>{plan.summary}</div>}
+                              <ol style={{ margin:0, paddingLeft:'18px', display:'flex', flexDirection:'column', gap:'5px' }}>
+                                {(plan.steps || []).map((s, si) => (
+                                  <li key={si} style={{ fontSize:'0.76rem', color:C.text, lineHeight:1.5 }}>{s}</li>
+                                ))}
+                              </ol>
+                              {plan.drill && (
+                                <div style={{ fontSize:'0.74rem', color:C.secondary, lineHeight:1.5, marginTop:'2px' }}>
+                                  <span style={{ fontWeight:700 }}>Next session: </span>{plan.drill}
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
                       ) : fixState.loading ? (

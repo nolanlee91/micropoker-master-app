@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react'
-import { ClipboardList, Lock, Sparkles, BrainCircuit, Brain } from 'lucide-react'
+import { ClipboardList, Lock, Sparkles, BrainCircuit, Brain, ChevronDown, ChevronUp } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { usePro } from '../hooks/usePro'
@@ -107,7 +107,9 @@ export default function Debrief() {
   const { hands } = useData()
   const { isPro, loading: proLoading, refresh: refreshPro } = usePro()
   const [showPaywall, setShowPaywall] = useState(false)
-  const [states, setStates] = useState({})   // { [day]: { loading, data, error } }
+  const [states, setStates] = useState({})    // { [day]: { loading, data, error } }
+  const [openDays, setOpenDays] = useState({}) // which debriefs are expanded
+  const toggleDay = (day) => setOpenDays(o => ({ ...o, [day]: !o[day] }))
 
   const sessions = useMemo(() => groupSessions(hands), [hands])
 
@@ -147,6 +149,7 @@ export default function Debrief() {
       if (!d || (!d.headline && !(d.topLeaks && d.topLeaks.length))) throw new Error('Could not build the debrief. Try again.')
       writeCache(`${day}:${session.count}`, d)
       setStates(s => ({ ...s, [day]: { loading: false, data: d } }))
+      setOpenDays(o => ({ ...o, [day]: true }))   // auto-expand the one just generated
     } catch (e) {
       setStates(s => ({ ...s, [day]: { loading: false, error: e.message || 'Could not build the debrief.' } }))
     }
@@ -189,19 +192,27 @@ export default function Debrief() {
           {sessions.map((session) => {
             const st = states[session.day] || {}
             const cached = st.data || (isPro ? readCache(`${session.day}:${session.count}`) : null)
+            const hasDebrief = isPro && !!cached
+            const open = !!openDays[session.day]
             return (
               <div key={session.day} style={{ padding:'14px', borderRadius:'12px', background:C.surface, border:`1px solid ${C.border}` }}>
-                <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                <div
+                  onClick={hasDebrief ? () => toggleDay(session.day) : undefined}
+                  style={{ display:'flex', alignItems:'center', gap:'10px', cursor: hasDebrief ? 'pointer' : 'default' }}
+                >
                   <span style={{ fontSize:'0.88rem', fontWeight:700, color:C.text, flex:1 }}>{fmtDay(session.day)}</span>
                   <span style={{ fontSize:'0.66rem', color:C.textMuted }}>{session.count} hands</span>
                   {session.evLeaked < 0 && (
                     <span style={{ fontSize:'0.8rem', fontWeight:800, color:C.red, fontVariantNumeric:'tabular-nums' }}>~${estLeak(session.evLeaked)}</span>
                   )}
+                  {hasDebrief && (open
+                    ? <ChevronUp size={16} color={C.textMuted} />
+                    : <ChevronDown size={16} color={C.textMuted} />)}
                 </div>
 
                 {isPro ? (
                   cached ? (
-                    <DebriefView d={cached} />
+                    open && <DebriefView d={cached} />
                   ) : st.loading ? (
                     <div style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'0.74rem', color:C.textMuted, marginTop:'12px' }}>
                       <div style={{ width:'14px', height:'14px', border:`2px solid ${C.primaryBorder}`, borderTopColor:C.primary, borderRadius:'50%', animation:'dbspin 0.8s linear infinite' }} />

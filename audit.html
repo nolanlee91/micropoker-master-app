@@ -226,6 +226,9 @@ const ITEMS = [
   { id:'FIX-1', sev:'feat', done:true, status:'DONE', notes:'2026-06-18.', title:'2 bug fix: odds nhảy số + flicker Pro',
     desc:'(1) Odds: seed PRNG từ input → cùng spot ra cùng số (hết nhảy). (2) usePro: cache + loading gate → màn Leaks không nháy non-Pro→Pro nữa.',
     files:['OddsCalculator.jsx','usePro.js','LeakProfile.jsx'], fix:'Đã verify (odds: 73.1/26.9 ổn định 2 lần).' },
+  { id:'FIX-2', sev:'feat', done:true, status:'DONE', notes:'2026-06-18.', title:'UX polish: instant-read Hero|Board + gập/mở plan & debrief',
+    desc:'(1) Instant-read ở Coach trước gộp phẳng hole+board ("QJQJ4…" khó đọc) → tách nhãn HERO | BOARD có vạch phân cách. (2) Fix plan (Leak) và Debrief mở ra không gập lại được → thêm gập/mở (chevron): cache mặc định gập cho gọn, cái vừa tạo tự mở. Tránh rối khi nhiều session/leak.',
+    files:['AICoach.jsx (buildInstantRead + render HERO/BOARD)','LeakProfile.jsx (collapse YOUR PLAN)','Debrief.jsx (collapse từng session)'], fix:'Đã build pass + push.' },
 
   { id:'OK-1', sev:'ok', title:'Stakes ĐÚNG — định vị LIVE CASH (không phải lỗi)',
     desc:'Ban đầu reviewer giả định "micro = online cents (NL2–NL100)". Nhưng đối tượng là khán giả các kênh YouTube dạy LIVE CASH. Trong live, $1/$1, $1/$2, $1/$3 LÀ stakes thấp nhất (micro/low live) — $1/$2 là bàn entry-level ở hầu hết casino. Vậy STAKES_LIST hiện tại CHUẨN với đối tượng. Không cần sửa.',

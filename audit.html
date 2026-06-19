@@ -229,6 +229,10 @@ const ITEMS = [
   { id:'FIX-2', sev:'feat', done:true, status:'DONE', notes:'2026-06-18.', title:'UX polish: instant-read Hero|Board + gập/mở plan & debrief',
     desc:'(1) Instant-read ở Coach trước gộp phẳng hole+board ("QJQJ4…" khó đọc) → tách nhãn HERO | BOARD có vạch phân cách. (2) Fix plan (Leak) và Debrief mở ra không gập lại được → thêm gập/mở (chevron): cache mặc định gập cho gọn, cái vừa tạo tự mở. Tránh rối khi nhiều session/leak.',
     files:['AICoach.jsx (buildInstantRead + render HERO/BOARD)','LeakProfile.jsx (collapse YOUR PLAN)','Debrief.jsx (collapse từng session)'], fix:'Đã build pass + push.' },
+  { id:'FIX-3', sev:'feat', done:true, status:'DONE', notes:'2026-06-19.', title:'Dọn Quiz cũ (các điểm yếu đã chê) + coverage guard',
+    desc:'Theo phản hồi: (1) tier HARD nông (bluff-candidate binary + range-advantage premise sai logic) → THAY bằng curated hard spots (randomHardSpot lấy ngẫu nhiên từ BANK_FOLD/TURN/VALUE/BLUFF — quyết định live-cash thật, vetted). (2) GỠ paywall sai chiến lược "Upgrade for Unlimited" (DashboardCard) — vốn đã dead code không render. (3) GỠ rối daily/weekly: useDailyProgress rút còn {streak,xp}, bỏ limit theo tuần + TIERS.daily + getWeekKey/TODAY dead. (4) Thêm TEST coverage: mọi leak trong LEAK_LABELS (trừ no_clear_leak) BẮT BUỘC có drill → thêm leak mà quên drill là test fail. 44/44 test pass.',
+    files:['utils/drills.js (randomHardSpot)','Quiz.jsx (getAdvancedQ→curated, gỡ DashboardCard + 2 generator nông + daily limit)','utils/drills.test.js (coverage guard)'],
+    fix:'Quiz HARD giờ là quyết định live-cash đáng học; quiz FREE không giới hạn (kiếm tiền ở Leak/Debrief). Coverage: 9/9 leak có drill, test chặn gap tương lai.' },
 
   { id:'OK-1', sev:'ok', title:'Stakes ĐÚNG — định vị LIVE CASH (không phải lỗi)',
     desc:'Ban đầu reviewer giả định "micro = online cents (NL2–NL100)". Nhưng đối tượng là khán giả các kênh YouTube dạy LIVE CASH. Trong live, $1/$1, $1/$2, $1/$3 LÀ stakes thấp nhất (micro/low live) — $1/$2 là bàn entry-level ở hầu hết casino. Vậy STAKES_LIST hiện tại CHUẨN với đối tượng. Không cần sửa.',

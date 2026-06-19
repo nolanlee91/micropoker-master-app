@@ -1,5 +1,26 @@
 import { describe, it, expect } from 'vitest'
-import { DRILL_META, buildDrillQueue, isDrillable } from './drills'
+import { DRILL_META, buildDrillQueue, isDrillable, randomHardSpot } from './drills'
+import { LEAK_LABELS } from './leaks'
+
+// COVERAGE GUARD: every real leak the Coach can output must have a drill. If anyone
+// adds a new leak_category (in leaks.js / coach.js) without a drill, this fails —
+// so a leak can never ship with no way to practise it.
+describe('drill coverage', () => {
+  for (const leak of Object.keys(LEAK_LABELS)) {
+    if (leak === 'no_clear_leak') continue
+    it(`${leak} has a drill`, () => { expect(isDrillable(leak)).toBe(true) })
+  }
+})
+
+describe('hard spot pool', () => {
+  it('randomHardSpot returns a valid spot with one correct option', () => {
+    for (let i = 0; i < 30; i++) {
+      const s = randomHardSpot()
+      expect(typeof s.question).toBe('string')
+      expect(s.options.filter(o => o.value === s.answer).length).toBe(1)
+    }
+  })
+})
 
 // Each leak's drill must actually yield a full queue (the correct-by-construction
 // constraints must not be so tight that the generator starves) and every question

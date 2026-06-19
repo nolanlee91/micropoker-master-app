@@ -5,12 +5,12 @@
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Flame, Clock, CheckCircle, XCircle, Trophy, ArrowLeft, Lock, RotateCcw, ChevronRight, Target } from 'lucide-react'
+import { Flame, Clock, CheckCircle, XCircle, Trophy, ArrowLeft, RotateCcw, ChevronRight, Target } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { celebrate, feedbackWrong } from '../utils/feedback'
 import { useData } from '../context/DataContext'
 import { computeLeaks, LEAK_LABELS } from '../utils/leaks'
-import { buildDrillQueue, drillTitle, isDrillable } from '../utils/drills'
+import { buildDrillQueue, drillTitle, isDrillable, randomHardSpot } from '../utils/drills'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -22,15 +22,6 @@ const C = {
   secondary:'#92ccff',
   tertiary:'#ffc0ac',
   text:'#E6EDF3', textMuted:'#7D8590', red:'#f47067',
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TIER CONFIG
-// ─────────────────────────────────────────────────────────────────────────────
-const TIERS = {
-  beginner:     { label:'Beginner',     daily:10, color:'84,233,138',   btnBg:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', btnColor:'#061a0e', topics:'Outs · Equity · Hand Rankings · Positions' },
-  intermediate: { label:'Intermediate', daily:3,  color:'146,204,255',  btnBg:'linear-gradient(135deg,#a8d8ff,#92ccff,#5aabee)', btnColor:'#03111e', topics:'Opening Ranges · Pot Odds · Combo Counting' },
-  advanced:     { label:'Advanced',     daily:2,  color:'200,160,255',   btnBg:'linear-gradient(135deg,#d4a0ff,#b06aff,#ffd700)', btnColor:'#1a0030', topics:'Bluff Spots · Range Advantage · Exploits' },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -478,80 +469,10 @@ function genComboQ() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ADVANCED: BLUFF CANDIDATE
+// ADVANCED (Hard tier): now served by curated live-cash decision spots from
+// utils/drills.js (randomHardSpot) — see getAdvancedQ. The old binary semi-bluff
+// and incoherent "range advantage" generators were removed (shallow + 50% guess).
 // ─────────────────────────────────────────────────────────────────────────────
-function genBluffCandidateQ() {
-  const deck = new Deck()
-  const hero  = deck.dealHand()
-  const board = deck.dealBoard(3)
-  if (new Set([...hero,...board]).size !== 5) return null
-
-  // Check flush draw: hero shares suit with 2+ board cards
-  const hSuits = hero.map(c=>c.slice(-1))
-  const bSuits = board.map(c=>c.slice(-1))
-  const sc = {}
-  ;[...hSuits,...bSuits].forEach(s=>sc[s]=(sc[s]||0)+1)
-  const hasFlushDraw = hSuits.some(s => (sc[s]||0) >= 4)
-
-  // Check OESD: 4 consecutive ranks among all 5 cards
-  const vals = [...hero,...board].map(c=>RANK_VAL[c.slice(0,-1)]).sort((a,b)=>a-b)
-  const uniq = [...new Set(vals)]
-  let hasOESD = false
-  for (let i=0; i<uniq.length-3; i++) if (uniq[i+3]-uniq[i]===3) { hasOESD=true; break }
-
-  const isGood = hasFlushDraw || hasOESD
-  const correctVal = isGood ? 'good' : 'poor'
-
-  const opts = shuffle([
-    { label:'Strong bluff — flush/straight draw gives equity backup', value:'good' },
-    { label:'Poor bluff — no draw, no real equity',                   value:'poor' },
-  ])
-
-  // Validate: exactly one correct option
-  if (opts.filter(o => o.value === correctVal).length !== 1) return null
-
-  return {
-    heroCards: hero, boardCards: board,
-    question: 'Is this a good semi-bluff candidate on this flop? (100bb Cash)',
-    options: opts,
-    answer: correctVal,
-    rationale: isGood
-      ? `You have ${hasFlushDraw ? 'a flush draw (9 outs)' : 'an open-ended straight draw (8 outs)'} — semi-bluffing here has fold equity + draw equity. Ideal spot.`
-      : 'No flush draw, no straight draw. Pure air bluffs with zero equity are -EV in 100bb Cash without a specific read.',
-    formula: 'Semi-bluff EV = (fold%) × pot + (1−fold%) × (equity × pot)',
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ADVANCED: RANGE ADVANTAGE / C-BET DECISION
-// ─────────────────────────────────────────────────────────────────────────────
-function genRangeAdvantageQ() {
-  const pos = ['UTG','UTG+1','CO','BTN'][Math.floor(Math.random()*4)]
-  const deck = new Deck()
-  const hero  = deck.dealHand()
-  const board = deck.dealBoard(3)
-  if (new Set([...hero,...board]).size !== 5) return null
-
-  const inR  = isInRange(hero, pos)
-  const combo = comboKey(hero)
-  const opts = shuffle([
-    { label:'Bet ~33% pot for thin value/protection', value:'bet'   },
-    { label:'Check — no equity, no reason to bet',    value:'check' },
-  ])
-  const answer = inR ? 'bet' : 'check'
-  if (opts.filter(o=>o.value===answer).length !== 1) return null
-
-  return {
-    heroCards:hero, boardCards:board, position:pos,
-    question:`You opened ${pos}, BB called (100bb Cash). Flop is on you. ${combo} — what's your line?`,
-    options:opts, answer,
-    rationale:inR
-      ? `${combo} is in your ${pos} range and has decent equity. Bet ~33% pot: builds the pot, denies equity, protects your hand.`
-      : `${combo} is NOT in your ${pos} range — you're weak here. Check back to keep the pot small and avoid building a large pot with no equity.`,
-    formula:inR?'Bet for value + protection (in range)':'Check back (out of range / air)',
-    showRange:true, rangeHighlight:combo,
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // QUESTION BANK PER TIER (weighted)
@@ -574,77 +495,29 @@ function getIntermediateQ() {
 }
 
 function getAdvancedQ() {
-  // Try each generator, fall back to the next if null
-  const r = Math.random()
-  if (r < 0.50) {
-    return safeGenerate(genBluffCandidateQ)
-        || safeGenerate(genRangeAdvantageQ)
-        || safeGenerate(genOpeningRangeQ)
-  }
-  if (r < 0.80) {
-    return safeGenerate(genRangeAdvantageQ)
-        || safeGenerate(genBluffCandidateQ)
-        || safeGenerate(genOpeningRangeQ)
-  }
-  return   safeGenerate(genOpeningRangeQ)
-        || safeGenerate(genBluffCandidateQ)
-        || safeGenerate(genRangeAdvantageQ)
+  // Hard tier now serves vetted, live-cash decisions (curated drill spots) instead of
+  // the old binary bluff-candidate / incoherent range-advantage questions.
+  return randomHardSpot()
 }
 
 const TIER_GEN = { beginner:getBeginnerQ, intermediate:getIntermediateQ, advanced:getAdvancedQ }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DAILY PROGRESS STORAGE
+// PROGRESS STORAGE (XP + streak only)
 // ─────────────────────────────────────────────────────────────────────────────
-const TODAY = () => new Date().toISOString().slice(0,10)
-
-// ISO week key: e.g. "2026-W14"
-function getWeekKey() {
-  const d = new Date()
-  const jan1 = new Date(d.getFullYear(), 0, 1)
-  const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7)
-  return `${d.getFullYear()}-W${String(week).padStart(2,'0')}`
-}
-
+// Quiz is FREE and unlimited — no per-tier daily/weekly limit, no "upgrade for
+// unlimited" (we monetize on the Leak Profile / Debrief, not quiz volume). This just
+// tracks XP + streak for the gamification loop.
 function useDailyProgress() {
-  const [data, setData] = useLocalStorage('quiz-daily-v2', {
-    week:'', beginnerUsed:0, intermediateUsed:0, advancedUsed:0,
-    beginnerBest:0, intermediateBest:0, advancedBest:0,
-    streak:0, xp:0,
-  })
+  const [data, setData] = useLocalStorage('quiz-daily-v2', { streak:0, xp:0 })
 
-  const thisWeek = getWeekKey()
-  // Reset weekly counts only (preserve best scores, streak, xp)
-  const safeData = data.week === thisWeek ? data : {
-    ...data, week:thisWeek, beginnerUsed:0, intermediateUsed:0, advancedUsed:0,
+  const consume = (tier, correct) => {
+    const xpGain = correct ? (tier === 'advanced' || tier === 'drill' ? 18 : tier === 'intermediate' ? 10 : 5) : 0
+    setData(d => ({ streak: correct ? (d.streak||0)+1 : 0, xp: (d.xp||0) + xpGain }))
   }
+  const resetAll = () => setData({ streak:0, xp:0 })
 
-  const used      = t => safeData[`${t}Used`] || 0
-  const best      = t => safeData[`${t}Best`] || 0
-  const limit     = t => TIERS[t].daily
-  const remaining = t => Math.max(0, limit(t) - used(t))
-  const exhausted = t => remaining(t) <= 0
-
-  const consume = (tier, correct, scoreThisSession) => {
-    const newUsed   = (safeData[`${tier}Used`]||0) + 1
-    const newBest   = Math.max(safeData[`${tier}Best`]||0, scoreThisSession)
-    const xpGain    = correct ? (tier==='beginner'?5:tier==='intermediate'?10:18) : 0
-    const newStreak = correct ? (safeData.streak||0)+1 : 0
-    setData({
-      ...safeData,
-      [`${tier}Used`]:  newUsed,
-      [`${tier}Best`]:  newBest,
-      streak: newStreak,
-      xp: (safeData.xp||0)+xpGain,
-    })
-  }
-
-  const resetAll = () => setData({
-    week:'', beginnerUsed:0, intermediateUsed:0, advancedUsed:0,
-    beginnerBest:0, intermediateBest:0, advancedBest:0, streak:0, xp:0,
-  })
-
-  return { used, best, limit, remaining, exhausted, consume, resetAll, streak:safeData.streak||0, xp:safeData.xp||0 }
+  return { consume, resetAll, streak:data.streak||0, xp:data.xp||0 }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -963,80 +836,6 @@ function QuizSession({ onBack, consume, queue: externalQueue, drillLabel, onRepl
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DASHBOARD CARD
-// ─────────────────────────────────────────────────────────────────────────────
-function DashboardCard({ tierId, remaining, used, limit, best, onStart }) {
-  const t        = TIERS[tierId]
-  const col      = `rgb(${t.color})`
-  const pct      = Math.round(((limit - remaining) / limit) * 100)
-  const complete = remaining <= 0
-  const inProg   = used > 0 && !complete
-  const isLocked = tierId !== 'beginner' && complete // non-free tiers lock on exhaustion
-
-  const badgeLabel = tierId === 'beginner' ? 'Free' : tierId === 'intermediate' ? '3/day' : '2/day'
-
-  return (
-    <div style={{
-      background: C.surface,
-      border: `1px solid ${complete ? C.border : C.borderHi}`,
-      borderRadius:'12px', padding:'16px',
-      opacity: isLocked ? 0.85 : 1,
-    }}>
-      {/* Top row */}
-      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:'10px' }}>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'4px' }}>
-            <span style={{ fontSize:'0.95rem', fontWeight:700, color:complete ? C.textMuted : C.text }}>{t.label}</span>
-            <span style={{ fontSize:'0.52rem', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', padding:'2px 7px', borderRadius:'10px', background:`rgba(${t.color},0.15)`, color:col }}>
-              {badgeLabel}
-            </span>
-          </div>
-          <div style={{ fontSize:'0.68rem', color:C.textMuted, lineHeight:1.4, marginBottom:'6px' }}>{t.topics}</div>
-          {best > 0 && (
-            <div style={{ fontSize:'0.6rem', color:C.textMuted, opacity:0.7 }}>Best today: {best}/{limit}</div>
-          )}
-        </div>
-        <div style={{ textAlign:'right', flexShrink:0, marginLeft:'12px' }}>
-          <div style={{ fontSize:'1.5rem', fontWeight:700, letterSpacing:'-0.02em', color:complete ? C.textMuted : col, fontVariantNumeric:'tabular-nums' }}>{remaining}</div>
-          <div style={{ fontSize:'0.55rem', color:C.textMuted, textTransform:'uppercase', letterSpacing:'0.08em' }}>/{limit} left</div>
-        </div>
-      </div>
-
-      {/* Progress bar */}
-      <div style={{ height:'4px', background:C.border, borderRadius:'2px', overflow:'hidden', marginBottom:'12px' }}>
-        <div style={{ width:`${pct}%`, height:'100%', background:complete ? C.textMuted : col, borderRadius:'2px', transition:'width 0.3s' }}/>
-      </div>
-
-      {/* CTA */}
-      {complete ? (
-        <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-          <div style={{ padding:'10px', borderRadius:'8px', background:C.surfaceHigh, textAlign:'center', fontSize:'0.75rem', color:C.textMuted, fontWeight:500 }}>
-            ✓ Completed this week — resets next Monday
-          </div>
-          <button style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'11px', borderRadius:'8px', border:'none', background:'linear-gradient(135deg,#ffd4a0,#ffc0ac,#e8906a)', color:'#2a1000', fontWeight:700, fontSize:'0.78rem', cursor:'pointer', minHeight:'44px' }}>
-            <Lock size={13}/> Upgrade for Unlimited Access →
-          </button>
-        </div>
-      ) : (
-        <button
-          onClick={onStart}
-          style={{
-            width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px',
-            padding:'12px', borderRadius:'8px', border:'none',
-            background: t.btnBg,
-            color: t.btnColor,
-            fontWeight:700, fontSize:'0.82rem', cursor:'pointer', minHeight:'44px',
-            boxShadow:`inset 0 1px 0 rgba(255,255,255,0.18), 0 0 14px rgba(${t.color},0.22)`,
-          }}
-        >
-          {inProg ? `Resume ${t.label} (${used}/${limit})` : `Start ${t.label}`} →
-        </button>
-      )}
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // MAIN QUIZ PAGE
 const LEVELS=[{xp:0,l:'Novice'},{xp:50,l:'Regular'},{xp:150,l:'Grinder'},{xp:350,l:'Shark'},{xp:700,l:'Crusher'},{xp:1200,l:'GTO Pro'}]
 function getLevel(xp){let lv=0;for(let i=0;i<LEVELS.length;i++)if(xp>=LEVELS[i].xp)lv=i;return{...LEVELS[lv],next:LEVELS[lv+1]}}
@@ -1148,7 +947,7 @@ export default function Quiz() {
           {[
             { label:'Easy', count:2, color:C.primary, topics:'Outs · Equity · Hand Rankings' },
             { label:'Medium', count:3, color:C.secondary, topics:'Ranges · Pot Odds · Combos' },
-            { label:'Hard', count:5, color:'#b06aff', topics:'Bluffs · Range Advantage' },
+            { label:'Hard', count:5, color:'#b06aff', topics:'Tough folds · Thin value · Bluffs' },
           ].map(({ label, count, color, topics }) => (
             <div key={label} style={{ flex:1, background:C.surfaceHigh, borderRadius:'8px', padding:'10px 12px', borderTop:`2px solid ${color}` }}>
               <div style={{ fontSize:'1.1rem', fontWeight:700, color, marginBottom:'2px', fontVariantNumeric:'tabular-nums' }}>{count}q</div>

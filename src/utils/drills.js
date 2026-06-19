@@ -262,6 +262,15 @@ export const DRILL_META = {
 export function drillTitle(leak) { return DRILL_META[leak]?.title || 'Leak Drill' }
 export function isDrillable(leak) { return !!DRILL_META[leak] }
 
+// A random HARD curated spot — used to replace the old quiz's shallow "Advanced"
+// generators (the binary bluff-candidate / incoherent range-advantage questions)
+// with real, vetted live-cash decisions. Options shuffled per serving.
+const HARD_BANKS = [...BANK_FOLD, ...BANK_TURN, ...BANK_VALUE, ...BANK_BLUFF]
+export function randomHardSpot() {
+  const s = pick(HARD_BANKS)
+  return { ...s, options: shuffle(s.options) }
+}
+
 // Build a queue of N questions for one leak. Curated banks are sampled without
 // back-to-back repeats (a full bank of 6 gives a clean no-repeat round); procedural
 // leaks generate fresh each time.

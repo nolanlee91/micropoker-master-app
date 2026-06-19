@@ -160,20 +160,44 @@ export default async function handler(req, res) {
     }
   }
 
-  // ── Layer 2: per-user daily anti-abuse cap ─────────────────────────────────
-  // A high ceiling a real player never hits; it just stops spam from burning the
-  // model quota. Best-effort: if the counter is unavailable, fail open (don't
-  // block a paying user over an infra hiccup). Counts analysis + follow-up.
+  // ── Layer 2: per-user daily anti-abuse cap (tiered) ────────────────────────
+  // Counts EVERY mode (analysis, follow-up, fix plan, debrief). The cap is tiered
+  // by who the user is — NOT to upsell (analysis is the free acquisition weapon and
+  // stays on the strong model for everyone), but to stop cost abuse:
+  //   • anonymous: small bucket so the no-login demo can't be farmed by rotating
+  //     throwaway anon identities (each anon = a fresh user.id);
+  //   • signed-in free: generous ceiling a real player never hits;
+  //   • Pro: highest.
+  // Best-effort: if the counter/lookup is unavailable, fail open (don't block a
+  // paying user over an infra hiccup).
   const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const DAILY_CAP    = parseInt(process.env.COACH_DAILY_CAP || '40', 10)
+  const CAP_ANON = parseInt(process.env.COACH_CAP_ANON || '5', 10)
+  const CAP_FREE = parseInt(process.env.COACH_CAP_FREE || process.env.COACH_DAILY_CAP || '20', 10)
+  const CAP_PRO  = parseInt(process.env.COACH_CAP_PRO  || '50', 10)
   if (SERVICE_ROLE) {
     try {
       const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
+
+      // Pro check mirrors usePro: active/trialing subscription that hasn't expired.
+      let isProUser = false
+      if (!user.is_anonymous) {
+        const { data: sub } = await admin
+          .from('subscriptions')
+          .select('status, current_period_end')
+          .eq('user_id', user.id)
+          .maybeSingle()
+        const activeStatus = !!sub && ['active', 'trialing'].includes(sub.status)
+        const notExpired   = !sub?.current_period_end || new Date(sub.current_period_end) > new Date()
+        isProUser = activeStatus && notExpired
+      }
+      const cap = user.is_anonymous ? CAP_ANON : isProUser ? CAP_PRO : CAP_FREE
+
       const { data: count, error: capErr } = await admin.rpc('bump_coach_usage', { p_user: user.id })
-      if (!capErr && typeof count === 'number' && count > DAILY_CAP) {
-        return res.status(429).json({
-          error: `Daily limit reached (${DAILY_CAP} hands). Come back tomorrow — this keeps the AI fast for everyone.`,
-        })
+      if (!capErr && typeof count === 'number' && count > cap) {
+        const msg = user.is_anonymous
+          ? `You've used your ${cap} free hands for today. Sign in with Google to keep going — it's free.`
+          : `Daily limit reached (${cap} hands). Come back tomorrow — this keeps the AI fast for everyone.`
+        return res.status(429).json({ error: msg })
       }
     } catch (e) {
       console.warn('[coach] usage cap skipped:', e.message)

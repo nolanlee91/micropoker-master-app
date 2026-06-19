@@ -249,6 +249,11 @@ const ITEMS = [
     files:['Quiz.jsx (useDailyProgress: day/quizPlays/drillPlays + playsToday + recordPlay; QuizSession: isLastPlay freeze + onComplete useEffect + done-screen 2 nhánh; dashboard gate Start + drill buttons; startDrill + deep-link check cap)'],
     fix:'Tạo vòng lặp thói quen hằng ngày thay vì cày cạn. Build pass, 51/51 test. Dev reset: window.resetQuizLimit(). Lưu ý: XP vẫn cộng cả 2 lượt nhưng bị chặn 2 lượt nên không farm vô hạn được nữa.' },
 
+  { id:'FIX-6', sev:'feat', done:true, status:'DONE', notes:'2026-06-19.', title:'Polish Hand Journal header + sửa chữ "limit hands"→"requests"',
+    desc:'(1) Mobile: CTA "Add Hand" bị rớt 2 dòng xấu → thêm flexShrink:0 + whiteSpace:nowrap → luôn 1 dòng. (2) Subtitle "· N logged" bị rớt chữ "logged" xuống dòng riêng → bọc trong span nowrap để dính liền. (3) Message limit 429 ghi "X hands" GÂY HIỂU NHẦM (cap đếm MỌI call: analyze + follow-up + fix + debrief, không phải số hand) → đổi thành "X AI requests".',
+    files:['HandHistory.jsx (Add Hand nowrap + "N logged" span nowrap)','api/coach.js (msg 429: hands → AI requests)'],
+    fix:'Header gọn trên mobile; message limit nói đúng bản chất (đếm call, không phải hand). Build pass.' },
+
   { id:'OK-1', sev:'ok', title:'Stakes ĐÚNG — định vị LIVE CASH (không phải lỗi)',
     desc:'Ban đầu reviewer giả định "micro = online cents (NL2–NL100)". Nhưng đối tượng là khán giả các kênh YouTube dạy LIVE CASH. Trong live, $1/$1, $1/$2, $1/$3 LÀ stakes thấp nhất (micro/low live) — $1/$2 là bàn entry-level ở hầu hết casino. Vậy STAKES_LIST hiện tại CHUẨN với đối tượng. Không cần sửa.',
     files:['BankrollManager.jsx:15 (STAKES_LIST — giữ nguyên)'],

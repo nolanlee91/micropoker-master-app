@@ -253,7 +253,13 @@ STEP 4 — ACTION RECONSTRUCTION (do this BEFORE judging — it must be identica
 - State the effective stack, the pot going into the decision, and the EXACT amount the hero is facing on the decision street.
 - Put this reconstruction in the "actionLine" field. If something is genuinely missing, say so there; do not invent amounts.
 
-STEP 5 — DECISION ANALYSIS
+STEP 5 — REQUEST MODE (decide this BEFORE judging — it changes the whole verdict)
+- Decide whether the hero has ALREADY COMMITTED their action on the decision street, or is ASKING what to do.
+  - "advice": the hand stops at the hero's decision with NO action taken, OR the hero asks what to do ("call or fold?", "what should I do?", "is this a fold?"). The hero has NOT acted yet — there is NO mistake to grade.
+  - "post_mortem": the hero's decision-street action is stated, or a result is given (they already called / folded / raised / jammed).
+- Record it in "requestMode". When genuinely unsure, prefer "advice" (never invent a mistake the hero may not have made).
+
+STEP 6 — DECISION ANALYSIS
 - Base the verdict on the reconstructed actionLine, referencing the actual amounts.
 - Factor in the game type and villain read AS STATED IN THE HAND, using standard population
   tendencies: live players underbluff big rivers (fold more); online pools are more aggressive
@@ -263,8 +269,11 @@ STEP 5 — DECISION ANALYSIS
   most reasonable assumption (e.g. assume stacks are deep enough for the action that
   happened), note it in ONE short clause in actionLine, and STILL commit to a definitive
   verdict, mistakeType, and a real ev_impact number estimated from the amounts you DO have.
-- NEVER answer "cannot determine" / "limited context" and NEVER leave ev_impact at 0 just
-  because one figure is unclear. Only use "limited context" if there is essentially no hand.
+- NEVER answer "cannot determine" / "limited context" just because one figure is unclear —
+  make the most reasonable assumption and still give a clear recommendation or verdict.
+  (ev_impact = 0 is CORRECT and expected for advice mode and for hands the hero played
+  correctly; only use a NEGATIVE ev_impact for a real committed mistake.) Only use "limited
+  context" if there is essentially no hand.
 
 CRITICAL: Return ONLY a JSON object. No text before or after it. No markdown. No code fences. No backticks.
 
@@ -273,8 +282,9 @@ Required format:
   "heroHandStrength": "exact classification, e.g. top pair top kicker, second pair, flush draw, etc.",
   "boardTexture": "brief board description, e.g. paired wet board, rainbow dry board",
   "actionLine": "reconstructed line w/ amounts + raise levels, e.g. 'BTN 3-bet to $70 pre, UTG calls; c-bet $90 flop call; bet $180 turn call; faces $250 river jam ($300 eff)'",
-  "summary": "One blunt verdict sentence",
-  "biggestMistake": "The main error in one direct sentence",
+  "requestMode": "post_mortem OR advice",
+  "summary": "One blunt sentence — a verdict if post_mortem, a recommendation if advice",
+  "biggestMistake": "The main error in one direct sentence (empty string if advice or if played correctly)",
   "mistakeType": "overcall OR overbet OR underbet OR bad_bluff OR wrong_fold OR bad_sizing OR missed_value OR correct",
   "leak_category": "${LEAK_CATEGORIES.join(' OR ')}",
   "ev_impact": <number in dollars, negative if user lost EV, positive if profitable>,
@@ -285,6 +295,16 @@ Required format:
 
 Rules:
 - Only output the JSON. Nothing else.
+- requestMode rules — apply STRICTLY:
+  - If "advice": you are giving a RECOMMENDATION, not grading a mistake. Set mistakeType="correct",
+    leak_category="no_clear_leak", ev_impact=0, biggestMistake="". Put the recommended action in
+    betterLine; summary reads as advice ("Facing this jam, folding is best because…"). Do NOT invent
+    an action the hero didn't take, and do NOT call it a leak.
+  - If "post_mortem": judge the ACTUAL action the hero took. If it WAS the best line (e.g. they folded
+    and folding is correct), set mistakeType="correct", leak_category="no_clear_leak", ev_impact=0 — do
+    NOT manufacture a leak. Assign a real leak_category + negative ev_impact ONLY when the action the
+    hero ACTUALLY took was genuinely worse than the best line. Never label a fold as a calling leak (or
+    vice-versa) — judge the action that actually happened.
 - All amounts are in dollars unless user explicitly writes "bb".
 - ev_impact must be GROUNDED in the actual dollars in the hand, NOT a round guess.
   Compute it as the EV difference between the hero's action and the best line, using
@@ -418,7 +438,10 @@ ${langGuideDebrief[responseLang] ? '\n' + langGuideDebrief[responseLang] : ''}`
         const VALID_MISTAKE_TYPES = ['overcall', 'overbet', 'underbet', 'bad_bluff', 'wrong_fold', 'bad_sizing', 'missed_value', 'correct']
         const VALID_LEAK_CATS     = ['river_call_too_wide', 'turn_call_too_wide', 'overbluff', 'missed_value', 'passive_play', 'bad_preflop', 'overpair_overplay', 'top_pair_overplay', 'draw_chasing', 'no_clear_leak']
 
+        const requestMode = parsed.requestMode === 'advice' ? 'advice' : 'post_mortem'
+
         const out = {
+          requestMode,
           heroHandStrength: typeof parsed.heroHandStrength === 'string' ? parsed.heroHandStrength : '',
           boardTexture:     typeof parsed.boardTexture     === 'string' ? parsed.boardTexture     : '',
           actionLine:       typeof parsed.actionLine       === 'string' ? parsed.actionLine       : '',
@@ -430,6 +453,15 @@ ${langGuideDebrief[responseLang] ? '\n' + langGuideDebrief[responseLang] : ''}`
           confidence:       ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'medium',
           whyWrong:         typeof parsed.whyWrong   === 'string' ? parsed.whyWrong   : '',
           betterLine:       typeof parsed.betterLine  === 'string' ? parsed.betterLine  : '',
+        }
+
+        // Safety net: a recommendation (advice) is NOT a committed mistake, so it must
+        // never pollute the Leak Profile — force it neutral regardless of the model (B-fix).
+        if (requestMode === 'advice') {
+          out.mistakeType    = 'correct'
+          out.leak_category  = 'no_clear_leak'
+          out.ev_impact      = 0
+          out.biggestMistake = ''
         }
 
         return res.status(200).json({ type: 'analysis', analysis: out })

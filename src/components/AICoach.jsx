@@ -148,6 +148,7 @@ function MiniCard({ card }) {
 // ── Structured Analysis Card ──────────────────────────────────────────────────
 function AnalysisCard({ analysis }) {
   const [whyOpen, setWhyOpen] = useState(false)
+  const isAdvice   = analysis.requestMode === 'advice'   // a recommendation, not a graded mistake (B-fix)
   const isCorrect  = analysis.mistakeType === 'correct'
   const conf       = analysis.confidence || 'medium'
   const confColor  = { high: C.primary, medium: '#FAD261', low: C.red }[conf]
@@ -163,6 +164,15 @@ function AnalysisCard({ analysis }) {
         <BrainCircuit size={14} color="#071525" />
       </div>
       <div style={{ flex:1, display:'flex', flexDirection:'column', gap:'8px' }}>
+
+        {/* Advice tag — make it explicit this is a recommendation, not a leak verdict */}
+        {isAdvice && (
+          <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+            <span style={{ fontSize:'0.58rem', fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', color:C.secondary, background:'rgba(146,204,255,0.1)', padding:'3px 9px', borderRadius:'8px' }}>
+              Recommendation · not counted as a leak
+            </span>
+          </div>
+        )}
 
         {/* Hand strength + board texture */}
         {(analysis.heroHandStrength || analysis.boardTexture) && (
@@ -238,8 +248,8 @@ function AnalysisCard({ analysis }) {
           </div>
         )}
 
-        {/* EV Impact */}
-        {ev != null && (
+        {/* EV Impact — hidden when 0 (advice mode or a correctly-played hand: no $ lost) */}
+        {ev != null && ev !== 0 && (
           <div style={{ padding:'10px 14px', borderRadius:'10px', background: ev >= 0 ? C.primaryDim : C.redDim, border:`1px solid ${ev >= 0 ? C.primaryBorder : C.redBorder}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <span style={{ fontSize:'0.6rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted }}>Estimated EV Impact</span>
             <span style={{ fontSize:'0.95rem', fontWeight:800, color:evColor, letterSpacing:'-0.02em' }}>
@@ -251,7 +261,7 @@ function AnalysisCard({ analysis }) {
         {/* Better Line */}
         {analysis.betterLine && analysis.betterLine !== 'Continue as played' && (
           <div style={{ padding:'10px 14px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}` }}>
-            <div style={{ fontSize:'0.58rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.primary, marginBottom:'4px' }}>Better Line</div>
+            <div style={{ fontSize:'0.58rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.primary, marginBottom:'4px' }}>{isAdvice ? 'Recommendation' : 'Better Line'}</div>
             <div style={{ fontSize:'0.875rem', color:C.text, lineHeight:1.6, fontWeight:600 }}>{analysis.betterLine}</div>
           </div>
         )}
@@ -386,14 +396,16 @@ UTG is a quiet, passive reg.
 UTG opens to $15, I call.
 Flop Qh Jd 4h, pot ~$33. UTG checks, I bet $20 with top two pair, he calls.
 Turn 8h — the flush gets there. UTG leads out $55, I call.
-River 2c. UTG jams $180 into ~$180. What should I do?`
+River 2c. UTG jams $180 into ~$180. I call.`
 
 // Hardcoded analysis for the example hand so the first-run demo is INSTANT (no
 // API round-trip, no Pro-model wait, works even if /api/coach is down). Mirrors
-// the real analysis schema so it renders through the same AnalysisCard. The hand
-// is a clear, non-debatable fold (two pair dead to a four-flush vs a nit) so the
-// demo is unambiguously instructive.
+// the real analysis schema so it renders through the same AnalysisCard. It's a
+// post_mortem: the hero already called the river jam, and the check-call-lead-jam
+// line screams a made flush — a clear river_call_too_wide leak the app infers from
+// the betting line alone (villain's cards never shown), so the demo is impressive.
 const EXAMPLE_ANALYSIS = {
+  requestMode:      'post_mortem',
   heroHandStrength: 'Two Pair, Queens and Jacks',
   boardTexture:     'three-flush (hearts) — flush completes on the turn',
   actionLine:       'UTG opens $15, BTN calls. Flop Qh Jd 4h: UTG checks, hero bets $20, UTG calls. Turn 8h (flush in): UTG leads $55, hero calls. River 2c: UTG jams $180 into ~$180 (~$180 effective).',

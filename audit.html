@@ -124,7 +124,7 @@
   <div class="verdict-row"><span>Giá Pro</span><span class="v" style="color:var(--accent)">$9.99/th · $83.99/năm</span></div>
   <div class="verdict-row"><span>Còn lại để thu tiền THẬT</span><span class="v">Bật Stripe <b>Live mode</b> (việc kinh doanh)</span></div>
   <div class="verdict-row"><span>🔴 P0 + 🟠 P1</span><span class="v yes">✅ Hoàn tất</span></div>
-  <div class="verdict-row"><span>⚠️ RISK (rủi ro moat & giữ chân)</span><span class="v yes">✅ 4/4 code xong · còn lại chờ analytics/user thật</span></div>
+  <div class="verdict-row"><span>⚠️ RISK (rủi ro moat & giữ chân)</span><span class="v yes">✅ 5/5 code xong · RISK-5 chặn leak ảo (advice vs post-mortem)</span></div>
   <div class="verdict-row"><span>📈 GROWTH (giữ chân / MRR)</span><span class="v" style="color:var(--growth)">3/4 — fix plan động + debrief + mốc 3-hand xong · GROWTH-3 (Quiz) còn lại</span></div>
 </div>
 
@@ -256,6 +256,12 @@ const ITEMS = [
     desc:'Pro mở khóa fix plan khá tĩnh → user có thể trả 1 tháng "lấy đáp án" rồi cancel. "Watch leaks shrink over time" là móc giữ chân DUY NHẤT nhưng còn mỏng: chưa có cơ chế đo & cho thấy leak giảm theo thời gian một cách rõ ràng. Đây là retention dài hạn — không gấp bằng RISK-1/2.',
     files:['LeakProfile.jsx (FIX_TIPS tĩnh)','utils/leaks.js (chưa so sánh leak theo thời gian)'],
     fix:'(a) "Leak trend": so tần suất/$ của từng leak kỳ này vs kỳ trước → cho user thấy tiến bộ = lý do trả tiếp; (b) nội dung Pro động (leak mới lộ ra khi trình lên); (c) annual nudge cho ai đã thấy value. Làm sau RISK-1/2/3.' },
+
+  { id:'RISK-5', sev:'risk', done:true, status:'DONE', notes:'2026-06-18 (Bước 1 của plan dọn 2-pool). Sửa prompt coach.js: phân loại requestMode = advice (user đang HỎI / chưa hành động) vs post_mortem (đã call/fold/raise). advice → KHÔNG chấm lỗi: mistakeType=correct, leak_category=no_clear_leak, ev_impact=0 → computeLeaks lọc bỏ → KHÔNG vào Leak Profile. post_mortem → chấm ĐÚNG hành động thật: fold đúng = correct (hết bịa "call too wide"); chỉ hành động sai thật mới thành leak + ev âm. Lưới an toàn server-side ép advice về trung tính dù model lỡ gán leak. Frontend: chip "Recommendation · not counted as a leak", ẩn thẻ EV khi =0, đổi "Better Line"→"Recommendation". Hand demo đổi câu cuối "What should I do?"→"I call." (thành post_mortem thật, villain vẫn ẩn bài → app suy flush từ line). Build + node --check pass.',
+    title:'Leak ẢO từ câu hỏi advice — phân tích luôn gán lỗi dù user chỉ HỎI hoặc đã fold ĐÚNG',
+    desc:'<span class="lbl">Toàn vẹn moat.</span> Prompt cũ bị ÉP luôn tìm ra 1 lỗi + 1 leak + ev âm ("NEVER leave ev_impact at 0"). Hậu quả: user hỏi "nên call hay fold?" (chưa hành động) → vẫn bị gán "river call too wide −$X"; user đã FOLD đúng → vẫn bị nói "call too wide". → Leak Profile bị bơm leak ẢO, bào mòn chính cái moat.',
+    files:['api/coach.js (requestMode + rules + safety net)','AICoach.jsx (AnalysisCard advice UI + EXAMPLE_HAND/ANALYSIS)'],
+    fix:'Đã làm Bước 1. CÒN LẠI trong plan: (2) nút 1-chạm "bạn đã làm gì?" (Called/Folded/Raised/Just asking) ở Coach để chốt hành động + bắt outcome nhẹ; (3) auto khớp session theo NGÀY (thay Link tay); (4) gỡ card picker + Link + Analyze, History thành "Analyzed Hands" chỉ-đọc.' },
 
   { id:'GROWTH-1', sev:'growth', done:true, status:'DONE', notes:'2026-06-18. SỬA OVERPROMISE THẬT: Paywall hứa "step-by-step fix plan for each leak" nhưng ship FIX_TIPS — dict 1 câu hardcode chung cho mọi user (savvy player nhận ra ngay → lý do #1 ko gia hạn). Giờ: api/coach.js thêm request_type "leak_fix" → Gemini flash đọc CHÍNH các hand của user trong leak đó (cards/board/ev/mistake) → trả {summary, steps[3-4], drill} cá nhân hoá. LeakProfile: giữ FIX 1-câu làm quick tip + nút "Build my fix plan from these N hands" → loading → render YOUR PLAN (summary + các bước + drill buổi tới). Cache localStorage theo (category,count) → chỉ regenerate khi có thêm hand, không tốn API mỗi lần xem; đếm vào daily cap. Sửa Paywall PERKS cho khớp + bỏ "Exact" còn sót (hợp RISK-2). Build + node --check pass.',
     title:'Fix plan ĐỘNG, cá nhân hoá (thay FIX_TIPS tĩnh) — sửa overpromise Paywall',

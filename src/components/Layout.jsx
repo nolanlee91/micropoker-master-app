@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { NavLink } from 'react-router-dom'
-import { History, Wallet, Calculator, BrainCircuit, Spade, Zap, LogOut, Settings, X, TrendingDown } from 'lucide-react'
+import { History, Wallet, Calculator, BrainCircuit, Spade, Zap, LogOut, Settings, X, TrendingDown, ClipboardList } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { useLocalStorage } from '../hooks/useLocalStorage'
@@ -10,6 +10,7 @@ const NAV = [
   { path: '/bankroll', label: 'Bankroll', icon: Wallet },
   { path: '/coach',    label: 'Coach',    icon: BrainCircuit, primary: true },
   { path: '/leaks',    label: 'Leaks',    icon: TrendingDown, primary: true },
+  { path: '/debrief',  label: 'Debrief',  icon: ClipboardList },
   { path: '/quiz',     label: 'Quiz',     icon: Zap },
   { path: '/odds',     label: 'Odds',     icon: Calculator },
 ]

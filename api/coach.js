@@ -35,6 +35,8 @@ export default async function handler(req, res) {
     request_type, question, hand_context, response_language,
     // personalized leak fix-plan fields
     leak_category, leak_hands,
+    // session debrief fields
+    session_hands, session_label,
   } = req.body
 
   console.log('[coach] received:', { request_type, isHandAnalysis, msgCount: messages?.length })
@@ -47,7 +49,8 @@ export default async function handler(req, res) {
   // Determine mode
   const isFollowUp = request_type === 'follow_up'
   const isLeakFix  = request_type === 'leak_fix'
-  const isAnalysis = isHandAnalysis === true && !isFollowUp && !isLeakFix
+  const isDebrief  = request_type === 'session_debrief'
+  const isAnalysis = isHandAnalysis === true && !isFollowUp && !isLeakFix && !isDebrief
 
   // Game type & villain read are no longer structured inputs — the model reads them
   // from the hand text. Only language remains a normalised setting.
@@ -69,6 +72,12 @@ export default async function handler(req, res) {
     English:    '',
     Vietnamese: 'IMPORTANT: Write summary, every step, and drill in Vietnamese. Do NOT translate JSON keys.',
     Chinese:    'IMPORTANT: Write summary, every step, and drill in Simplified Chinese. Do NOT translate JSON keys.',
+  }
+
+  const langGuideDebrief = {
+    English:    '',
+    Vietnamese: 'IMPORTANT: Write headline, every topLeak, biggestSpot, mental, and nextFocus in Vietnamese. Do NOT translate JSON keys.',
+    Chinese:    'IMPORTANT: Write headline, every topLeak, biggestSpot, mental, and nextFocus in Simplified Chinese. Do NOT translate JSON keys.',
   }
 
   const LEAK_CATEGORIES = [
@@ -109,6 +118,27 @@ export default async function handler(req, res) {
       .join('\n')
     contents.length = 0
     contents.push({ role: 'user', parts: [{ text: `Leak category: ${cat || 'unknown'}\n\nMy hands tagged with this leak:\n${handLines || '(no hand detail available)'}` }] })
+  }
+
+  // For a session debrief: feed every hand the player flagged this session so the
+  // model reads the night as a whole (recurring patterns, tilt, one focus) — the
+  // recurring ritual a weekend live player actually has.
+  if (isDebrief) {
+    const handLines = (Array.isArray(session_hands) ? session_hands : [])
+      .slice(0, 20)
+      .map((h, i) => {
+        const hole  = Array.isArray(h.holeCards) ? h.holeCards.join('') : ''
+        const board = Array.isArray(h.boardCards) && h.boardCards.length ? h.boardCards.join(' ') : '—'
+        const ev    = typeof h.evImpact === 'number'
+          ? (h.evImpact > 0 ? `+$${Math.round(h.evImpact)}` : `-$${Math.abs(Math.round(h.evImpact))}`)
+          : ''
+        const leak  = h.leakCategory ? ` [${h.leakCategory}]` : ''
+        const note  = h.aiAnalysis?.biggestMistake || h.aiAnalysis?.summary || h.notes || ''
+        return `${i + 1}. ${hole || '??'} on ${board} ${ev}${leak} — ${String(note).slice(0, 160)}`
+      })
+      .join('\n')
+    contents.length = 0
+    contents.push({ role: 'user', parts: [{ text: `Session: ${session_label || 'recent session'}\n\nHands I flagged this session:\n${handLines || '(no hand detail available)'}` }] })
   }
 
   // Gemini requires at least one content item
@@ -289,7 +319,32 @@ Rules:
 - All amounts in dollars unless the hand says "bb".
 ${langGuideLeakFix[responseLang] ? '\n' + langGuideLeakFix[responseLang] : ''}`
 
-  const systemText = isAnalysis ? analysisSystemText : isLeakFix ? leakFixSystemText : followUpSystemText
+  const debriefSystemText = `You are a sharp poker coach writing a SESSION DEBRIEF from the hands a player flagged in one session. Read the night as a WHOLE — patterns across hands, not a per-hand re-analysis. This is the recurring paid ritual, so it must feel like you watched their session.
+
+CRITICAL: Return ONLY a JSON object. No text before or after. No markdown. No code fences. No backticks.
+
+Required format:
+{
+  "headline": "One blunt sentence on the session's overall decision quality.",
+  "topLeaks": ["2 to 3 recurring decision patterns across THIS session, each one line, most costly first."],
+  "biggestSpot": "The single costliest spot of the session and the better line, with the actual cards/amounts.",
+  "mental": "A tilt / mental-game observation IF the hands suggest one (e.g. spew after a cooler); otherwise an empty string.",
+  "nextFocus": "ONE concrete thing to focus on next session."
+}
+
+Rules:
+- Only output the JSON. Nothing else.
+- Synthesize across hands — call out what REPEATS. Do not just describe each hand.
+- Be specific: reference real cards, boards, and dollar amounts from the hands.
+- Live population reads: live players underbluff big rivers (fold more); fish call too much and rarely bluff; nits rarely bluff.
+- If the sample is small, say what the few hands suggest — do not pad with generic theory.
+- "mental" must be an empty string if nothing in the hands points to tilt or mindset.
+${langGuideDebrief[responseLang] ? '\n' + langGuideDebrief[responseLang] : ''}`
+
+  const systemText = isAnalysis ? analysisSystemText
+                   : isLeakFix  ? leakFixSystemText
+                   : isDebrief  ? debriefSystemText
+                   : followUpSystemText
 
   // The structured hand analysis is the paid product, so it gets the stronger
   // reasoning model (deeper on multi-street spots). Follow-up Q&A stays on flash —
@@ -376,6 +431,24 @@ ${langGuideLeakFix[responseLang] ? '\n' + langGuideLeakFix[responseLang] : ''}`
           summary: parsed && typeof parsed.summary === 'string' ? parsed.summary : '',
           steps,
           drill:   parsed && typeof parsed.drill === 'string' ? parsed.drill : '',
+        },
+      })
+    }
+
+    // ── Session debrief ───────────────────────────────────────────────────────
+    if (isDebrief) {
+      const parsed = extractJSON(raw)
+      const topLeaks = parsed && Array.isArray(parsed.topLeaks)
+        ? parsed.topLeaks.filter(s => typeof s === 'string' && s.trim()).slice(0, 4)
+        : []
+      return res.status(200).json({
+        type: 'session_debrief',
+        debrief: {
+          headline:    parsed && typeof parsed.headline    === 'string' ? parsed.headline    : '',
+          topLeaks,
+          biggestSpot: parsed && typeof parsed.biggestSpot === 'string' ? parsed.biggestSpot : '',
+          mental:      parsed && typeof parsed.mental      === 'string' ? parsed.mental      : '',
+          nextFocus:   parsed && typeof parsed.nextFocus   === 'string' ? parsed.nextFocus   : '',
         },
       })
     }

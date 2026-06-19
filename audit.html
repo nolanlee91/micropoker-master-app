@@ -239,6 +239,11 @@ const ITEMS = [
     files:['api/coach.js (thinkingConfig + maxOutputTokens 9000 + token log + cap mới + per-IP + global breaker)','db/migration-2-anti-abuse.sql (mới — bump_ip_usage + bump_global_usage)','.env.example (doc COACH_CAP_* / COACH_CAP_IP_ANON / COACH_GLOBAL_DAILY_CAP)'],
     fix:'Worst-case mới (free8/pro20) ≈ $30/ngày (~$910/th) so với ~$2,280/th. ⚠️ BIÊN LỜI: 1 Pro cày max 20/ngày ≈ $20/th API > giá Pro $9.99/th → worst-case lỗ ~$10/Pro; usage thật thấp hơn nhiều nên trung bình vẫn lời. Cân nhắc hạ COACH_CAP_PRO nếu lo, hoặc theo dõi log token thật rồi siết thinkingBudget xuống 4096. Build pass, 51/51 test.' },
 
+  { id:'FIX-4', sev:'feat', done:true, status:'DONE', notes:'2026-06-19.', title:'Bug nhất quán paywall: Quiz lòi chẩn đoán leak cho free',
+    desc:'Leak Profile + Debrief che mờ chẩn đoán leak (Pro), NHƯNG Quiz lại render thẳng "Drill your leaks" = đúng danh sách leak của user + cho drill miễn phí → free lách xem được chính cái đang bán. Sửa: gate phần "Drill your leaks" theo isPro y như Leak/Debrief — non-Pro thấy danh sách BLUR + ổ khóa + nút "Upgrade to Pro"; nút drill và deep-link /quiz?drill=<leak> đều chặn (mở Paywall thay vì vào session). Chờ proLoading xong mới quyết để Pro deep-link không nháy paywall. Quiz THƯỜNG (daily 6-câu + luyện chung randomHardSpot) vẫn FREE.',
+    files:['Quiz.jsx (usePro + Paywall, blur/lock "Drill your leaks", gate startDrill + deep-link)'],
+    fix:'Free giờ KHÔNG còn lấy được chẩn đoán leak qua Quiz — khớp Leak/Debrief. Build pass, 51/51 test. (Ghi chú: gate vẫn ở frontend; muốn bịt kín thì thêm check isPro cho leak_fix/session_debrief trong coach.js — xem cuối COST-1.)' },
+
   { id:'OK-1', sev:'ok', title:'Stakes ĐÚNG — định vị LIVE CASH (không phải lỗi)',
     desc:'Ban đầu reviewer giả định "micro = online cents (NL2–NL100)". Nhưng đối tượng là khán giả các kênh YouTube dạy LIVE CASH. Trong live, $1/$1, $1/$2, $1/$3 LÀ stakes thấp nhất (micro/low live) — $1/$2 là bàn entry-level ở hầu hết casino. Vậy STAKES_LIST hiện tại CHUẨN với đối tượng. Không cần sửa.',
     files:['BankrollManager.jsx:15 (STAKES_LIST — giữ nguyên)'],

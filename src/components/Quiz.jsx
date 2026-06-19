@@ -5,12 +5,14 @@
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Flame, Clock, CheckCircle, XCircle, Trophy, ArrowLeft, RotateCcw, ChevronRight, Target } from 'lucide-react'
+import { Flame, Clock, CheckCircle, XCircle, Trophy, ArrowLeft, RotateCcw, ChevronRight, Target, Lock } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { celebrate, feedbackWrong } from '../utils/feedback'
 import { useData } from '../context/DataContext'
 import { computeLeaks, LEAK_LABELS } from '../utils/leaks'
 import { buildDrillQueue, drillTitle, isDrillable, randomHardSpot } from '../utils/drills'
+import { usePro } from '../hooks/usePro'
+import Paywall from './Paywall'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -845,20 +847,29 @@ function getLevel(xp){let lv=0;for(let i=0;i<LEVELS.length;i++)if(xp>=LEVELS[i].
 export default function Quiz() {
   const dp = useDailyProgress()
   const { hands } = useData()
+  const { isPro, loading: proLoading, refresh: refreshPro } = usePro()
   const [searchParams, setSearchParams] = useSearchParams()
   const [active, setActive]       = useState(false)
   const [drillLeak, setDrillLeak] = useState(null)
   const [sessionKey, setSessionKey] = useState(0)   // bump to remount with a fresh queue
+  const [showPaywall, setShowPaywall] = useState(false)
 
   useEffect(() => {
     window.resetQuizLimit = () => { dp.resetAll(); window.location.reload() }
   }, [])
 
-  // Deep-link from the Leak Profile: /quiz?drill=<leak_category>
+  // Deep-link from the Leak Profile: /quiz?drill=<leak_category>. Leak-targeted
+  // drills reveal the user's leak diagnosis (the paid product) — gate them behind
+  // Pro exactly like the Leak Profile & Debrief. Wait for the Pro check to resolve
+  // so a Pro user deep-linking doesn't flash the paywall.
   useEffect(() => {
+    if (proLoading) return
     const d = searchParams.get('drill')
-    if (d && isDrillable(d)) { setDrillLeak(d); setActive(true) }
-  }, [searchParams])
+    if (d && isDrillable(d)) {
+      if (isPro) { setDrillLeak(d); setActive(true) }
+      else { setShowPaywall(true) }
+    }
+  }, [searchParams, isPro, proLoading])
 
   // GROWTH-3: the player's actual leaks, surfaced as drills right here.
   const leaks = useMemo(() => computeLeaks(hands), [hands])
@@ -869,7 +880,10 @@ export default function Quiz() {
     [drillLeak, sessionKey]
   )
 
-  const startDrill = (leak) => { setDrillLeak(leak); setActive(true) }
+  const startDrill = (leak) => {
+    if (!isPro) { setShowPaywall(true); return }   // leak drills are Pro (same as Leak/Debrief)
+    setDrillLeak(leak); setActive(true)
+  }
   const exitSession = () => {
     setActive(false); setDrillLeak(null)
     if (searchParams.get('drill')) { searchParams.delete('drill'); setSearchParams(searchParams, { replace: true }) }
@@ -900,14 +914,23 @@ export default function Quiz() {
         <p style={{ fontSize:'0.72rem', color:C.textMuted }}>6 questions · 1 Easy + 2 Medium + 3 Hard · come back daily</p>
       </div>
 
-      {/* GROWTH-3: drill YOUR leaks — the bridge from Coach → Leak Profile → practice. */}
+      {/* GROWTH-3: drill YOUR leaks — the bridge from Coach → Leak Profile → practice.
+          This section exposes the player's leak DIAGNOSIS (which leaks they have),
+          which is the paid product — so for non-Pro it's blurred behind a lock, the
+          same gate as the Leak Profile & Debrief. Generic daily quiz below stays free. */}
       {drillableLeaks.length > 0 && (
-        <div style={{ background:C.surface, border:`1px solid ${C.primaryBorder}`, borderRadius:'12px', padding:'16px', marginBottom:'20px' }}>
+        <div style={{ background:C.surface, border:`1px solid ${C.primaryBorder}`, borderRadius:'12px', padding:'16px', marginBottom:'20px', position:'relative', overflow:'hidden' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'7px', marginBottom:'12px' }}>
             <Target size={15} color={C.primary} />
             <span style={{ fontSize:'0.78rem', fontWeight:700, color:C.text }}>Drill your leaks</span>
+            {!isPro && <span style={{ marginLeft:'auto', fontSize:'0.58rem', fontWeight:800, letterSpacing:'0.06em', color:C.primary, background:C.primaryDim, padding:'3px 8px', borderRadius:'6px' }}>PRO</span>}
           </div>
-          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+          <div style={{
+            display:'flex', flexDirection:'column', gap:'8px',
+            filter: isPro ? 'none' : 'blur(5px)',
+            pointerEvents: isPro ? 'auto' : 'none',
+            userSelect: isPro ? 'auto' : 'none',
+          }} aria-hidden={!isPro}>
             {drillableLeaks.map(l => (
               <button key={l.category} onClick={() => startDrill(l.category)} style={{
                 display:'flex', alignItems:'center', gap:'10px', padding:'11px 12px', borderRadius:'9px',
@@ -919,9 +942,33 @@ export default function Quiz() {
               </button>
             ))}
           </div>
-          <div style={{ fontSize:'0.62rem', color:C.textMuted, marginTop:'10px', lineHeight:1.5 }}>
-            From your Leak Profile — a quick 3-spot drill each. Practice the exact spots costing you money.
-          </div>
+          {isPro && (
+            <div style={{ fontSize:'0.62rem', color:C.textMuted, marginTop:'10px', lineHeight:1.5 }}>
+              From your Leak Profile — a quick 3-spot drill each. Practice the exact spots costing you money.
+            </div>
+          )}
+          {!isPro && (
+            <div style={{
+              position:'absolute', inset:0, display:'flex', flexDirection:'column',
+              alignItems:'center', justifyContent:'center', gap:'9px', textAlign:'center',
+              padding:'16px', background:'rgba(11,14,20,0.55)', borderRadius:'12px',
+            }}>
+              <Lock size={20} color={C.primary} />
+              <span style={{ fontSize:'0.74rem', fontWeight:700, color:C.text, maxWidth:'260px', lineHeight:1.4 }}>
+                Drill the exact leaks costing you money
+              </span>
+              <span style={{ fontSize:'0.62rem', color:C.textMuted, maxWidth:'260px', lineHeight:1.4 }}>
+                Unlock your Leak Profile to practise your real leaks.
+              </span>
+              <button onClick={() => setShowPaywall(true)} style={{
+                marginTop:'2px', padding:'9px 16px', borderRadius:'9px', border:'none',
+                background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e',
+                fontSize:'0.74rem', fontWeight:800, cursor:'pointer',
+              }}>
+                Upgrade to Pro
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -970,6 +1017,8 @@ export default function Quiz() {
       }}>
         Start Quiz →
       </button>
+
+      {showPaywall && <Paywall onClose={() => setShowPaywall(false)} onRestore={refreshPro} />}
     </div>
   )
 }

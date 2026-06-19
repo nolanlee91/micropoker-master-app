@@ -146,6 +146,72 @@ function MiniCard({ card }) {
 }
 
 // ── Structured Analysis Card ──────────────────────────────────────────────────
+// ── Hero-action capture (B-fix step 2) ────────────────────────────────────────
+// After an analysis, the player taps what they ACTUALLY did. This is the low-friction
+// replacement for the old card-picker logging: it both keeps the Leak Profile honest
+// (a question or a correctly-played line is never a leak) and records the action.
+const HERO_ACTIONS = [
+  { key:'called', label:'Called'      },
+  { key:'folded', label:'Folded'      },
+  { key:'raised', label:'Raised'      },
+  { key:'asking', label:'Just asking' },
+]
+
+// Map the model's recommended line ("Fold.", "Raise to $40", "Call") to an action class.
+function recActionClass(betterLine) {
+  const s = (betterLine || '').toLowerCase()
+  if (/\bfold/.test(s))                              return 'fold'
+  if (/\b(rais|jam|shov|3-?bet|4-?bet|bet)\b/.test(s)) return 'raise'
+  if (/\bcheck/.test(s))                             return 'check'
+  if (/\bcall/.test(s))                              return 'call'
+  return 'unknown'
+}
+
+// Re-attribute an analysis given the hero's actual action. "asking" → advice (no leak).
+// Playing the recommended line → correct (no leak). A real deviation keeps the model's
+// read. This is what stops phantom leaks coming from the user's side.
+function applyHeroAction(a, action) {
+  const neutral = { ...a, mistakeType:'correct', leak_category:'no_clear_leak', ev_impact:0, biggestMistake:'' }
+  if (action === 'asking') return { ...neutral, requestMode:'advice' }
+  const actClass = { called:'call', folded:'fold', raised:'raise' }[action]
+  const rec = recActionClass(a.betterLine)
+  if (rec !== 'unknown' && actClass === rec) {
+    // played the recommended line → confirm a correct play (green badge), not a leak
+    return { ...neutral, requestMode:'post_mortem', biggestMistake:'You took the recommended line — no leak here.' }
+  }
+  return { ...a, requestMode:'post_mortem' }   // deviated from the best line → keep the leak
+}
+
+function ActionTapRow({ selected, onAction }) {
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+      <span style={{ fontSize:'0.58rem', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:C.textMuted }}>
+        What did you do?
+      </span>
+      <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+        {HERO_ACTIONS.map(a => {
+          const on = selected === a.key
+          return (
+            <button key={a.key} onClick={() => onAction(a.key)} style={{
+              padding:'6px 12px', borderRadius:'8px', cursor:'pointer',
+              border:`1px solid ${on ? C.secondary : C.border}`,
+              background: on ? 'rgba(146,204,255,0.12)' : C.surfaceHi,
+              color: on ? C.secondary : C.textMuted,
+              fontSize:'0.7rem', fontWeight:700,
+            }}>{a.label}</button>
+          )
+        })}
+      </div>
+      {selected === 'asking' && (
+        <span style={{ fontSize:'0.62rem', color:C.textMuted }}>Noted as a question — not counted as a leak.</span>
+      )}
+      {selected && selected !== 'asking' && (
+        <span style={{ fontSize:'0.62rem', color:C.textMuted }}>Saved. Only a real mistake counts toward your Leak Profile.</span>
+      )}
+    </div>
+  )
+}
+
 function AnalysisCard({ analysis }) {
   const [whyOpen, setWhyOpen] = useState(false)
   const isAdvice   = analysis.requestMode === 'advice'   // a recommendation, not a graded mistake (B-fix)
@@ -304,11 +370,20 @@ function FollowUpCard({ followUp }) {
 }
 
 // ── Plain chat bubble ─────────────────────────────────────────────────────────
-function Bubble({ msg }) {
+function Bubble({ msg, onAction }) {
   const isUser = msg.role === 'user'
 
   if (msg.type === 'analysis' && msg.analysis) {
-    return <AnalysisCard analysis={msg.analysis} />
+    return (
+      <div style={{ marginBottom:'4px' }}>
+        <AnalysisCard analysis={msg.analysis} />
+        {msg.handId && onAction && (
+          <div style={{ paddingLeft:'36px', marginTop:'-4px', marginBottom:'12px' }}>
+            <ActionTapRow selected={msg.heroAction} onAction={onAction} />
+          </div>
+        )}
+      </div>
+    )
   }
 
   if (msg.type === 'follow_up' && msg.followUp) {
@@ -443,23 +518,52 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
 
   // Save a free-text-analyzed hand into the user's hand store so it feeds the Leak
   // Profile. Only the AI fields + extracted cards are kept (no manual logging UI).
-  const persistFreeHand = useCallback((analysis) => {
+  // Returns the new hand id so the analysis bubble can attach the hero-action tap.
+  const persistFreeHand = useCallback(async (analysis) => {
     const pf = pendingFreeHandRef.current
-    if (!pf || !analysis) return
+    if (!pf || !analysis) return null
     pendingFreeHandRef.current = null
-    addHand({
-      holeCards:    pf.hole,
-      boardCards:   pf.board,
-      position:     '',
-      street:       '',
-      action:       '',
-      result:       0,
-      notes:        (pf.text || '').slice(0, 500),
-      aiAnalysis:   analysis,
-      leakCategory: analysis.leak_category || null,
-      evImpact:     typeof analysis.ev_impact === 'number' ? analysis.ev_impact : null,
-    }).catch(() => {})
+    try {
+      const created = await addHand({
+        holeCards:    pf.hole,
+        boardCards:   pf.board,
+        position:     '',
+        street:       '',
+        action:       '',
+        result:       0,
+        notes:        (pf.text || '').slice(0, 500),
+        aiAnalysis:   analysis,
+        leakCategory: analysis.leak_category || null,
+        evImpact:     typeof analysis.ev_impact === 'number' ? analysis.ev_impact : null,
+      })
+      return created?.id || null
+    } catch { return null }
   }, [addHand])
+
+  // The hero taps what they actually did (Called/Folded/Raised/Just asking) under an
+  // analysis. Re-attribute the read and write it back to the stored hand so the Leak
+  // Profile reflects the truth — a question or a correctly-played line is not a leak.
+  const handleHeroAction = useCallback((idx, action) => {
+    setMessages(prev => {
+      const msg = prev[idx]
+      if (!msg || msg.type !== 'analysis' || !msg.analysis) return prev
+      const corrected = applyHeroAction(msg.analysis, action)
+      if (msg.handId) {
+        const full = hands.find(h => h.id === msg.handId)
+        if (full) {
+          updateHand(msg.handId, {
+            ...full,
+            aiAnalysis:   corrected,
+            leakCategory: corrected.leak_category || null,
+            evImpact:     typeof corrected.ev_impact === 'number' ? corrected.ev_impact : null,
+          }).catch(() => {})
+        }
+      }
+      const next = [...prev]
+      next[idx] = { ...msg, heroAction: action, analysis: corrected }
+      return next
+    })
+  }, [hands, updateHand, setMessages])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior:'smooth' })
@@ -578,17 +682,23 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
         if (handEval?.boardTexture?.description) {
           data.analysis.boardTexture = handEval.boardTexture.description
         }
-        setMessages(prev => [...prev, { role:'assistant', type:'analysis', content: data.analysis.summary || '', analysis:data.analysis }])
+        const analysisObj = data.analysis
         const hand = currentHandRef.current
+        // Render instantly with the id we already have (preloaded hand). For a
+        // free-text hand the id arrives after the insert, so patch it in then — the
+        // hero-action tap only renders once a handId is attached.
+        setMessages(prev => [...prev, { role:'assistant', type:'analysis', content: analysisObj.summary || '', analysis: analysisObj, handId: hand?.id || null }])
         if (isHandAnalysis && hand?.id) {
           updateHand(hand.id, {
             ...hand,
-            aiAnalysis:   data.analysis,
-            leakCategory: data.analysis.leak_category || null,
-            evImpact:     typeof data.analysis.ev_impact === 'number' ? data.analysis.ev_impact : null,
+            aiAnalysis:   analysisObj,
+            leakCategory: analysisObj.leak_category || null,
+            evImpact:     typeof analysisObj.ev_impact === 'number' ? analysisObj.ev_impact : null,
           }).catch(() => {})
         } else if (isHandAnalysis) {
-          persistFreeHand(data.analysis) // free-text hand → save for the leak profile
+          persistFreeHand(analysisObj).then(id => {   // free-text hand → save for the leak profile
+            if (id) setMessages(prev => prev.map(m => m.analysis === analysisObj ? { ...m, handId: id } : m))
+          })
         }
 
       } else {
@@ -600,8 +710,8 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           const recovered = parseAnalysisText(replyText)
           if (recovered) {
             console.log('[coach] Frontend recovered structured analysis from reply fallback')
-            setMessages(prev => [...prev, { role:'assistant', type:'analysis', content: recovered.summary || '', analysis:recovered }])
             const hand = currentHandRef.current
+            setMessages(prev => [...prev, { role:'assistant', type:'analysis', content: recovered.summary || '', analysis:recovered, handId: hand?.id || null }])
             if (hand?.id) {
               updateHand(hand.id, {
                 ...hand,
@@ -610,7 +720,9 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
                 evImpact:     typeof recovered.ev_impact === 'number' ? recovered.ev_impact : null,
               }).catch(() => {})
             } else {
-              persistFreeHand(recovered) // free-text hand → save for the leak profile
+              persistFreeHand(recovered).then(id => {   // free-text hand → save for the leak profile
+                if (id) setMessages(prev => prev.map(m => m.analysis === recovered ? { ...m, handId: id } : m))
+              })
             }
             return
           }
@@ -879,7 +991,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           </div>
         )}
 
-        {messages.map((msg, i) => <Bubble key={i} msg={msg} />)}
+        {messages.map((msg, i) => <Bubble key={i} msg={msg} onAction={(action) => handleHeroAction(i, action)} />)}
 
         {/* Instant deterministic read — shown while Gemini thinks (correctness moat + latency fill) */}
         {instantRead && loading && (

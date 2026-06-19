@@ -45,8 +45,10 @@ export function DataProvider({ children }) {
       .insert({ ...handToRow(hand), user_id: user.id })
       .select()
       .single()
-    if (!error) setHands(prev => [rowToHand(data), ...prev])
-    return error
+    if (error) return null
+    const created = rowToHand(data)
+    setHands(prev => [created, ...prev])
+    return created   // callers need the new id (e.g. to attach the hero-action tap)
   }
 
   const updateHand = async (id, hand) => {

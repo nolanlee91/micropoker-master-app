@@ -505,21 +505,51 @@ function getAdvancedQ() {
 const TIER_GEN = { beginner:getBeginnerQ, intermediate:getIntermediateQ, advanced:getAdvancedQ }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PROGRESS STORAGE (XP + streak only)
+// PROGRESS STORAGE (XP + streak + daily play limit)
 // ─────────────────────────────────────────────────────────────────────────────
-// Quiz is FREE and unlimited — no per-tier daily/weekly limit, no "upgrade for
-// unlimited" (we monetize on the Leak Profile / Debrief, not quiz volume). This just
-// tracks XP + streak for the gamification loop.
+// XP + streak feed the gamification loop. On top of that we cap plays at 2/day —
+// the quiz and EACH leak drill can be done once, then replayed once, then it locks
+// until tomorrow. The point is the daily-habit loop: if a player can binge the whole
+// bank in one sitting they stop coming back (and hit repeated questions). All local,
+// no API cost — this is purely a retention gate, not a paywall.
+const MAX_PLAYS = 2
+function playDayKey() {
+  // Local calendar day, so "come back tomorrow" means the player's own tomorrow.
+  const d = new Date()
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+}
 function useDailyProgress() {
   const [data, setData] = useLocalStorage('quiz-daily-v2', { streak:0, xp:0 })
 
+  const today      = playDayKey()
+  const sameDay    = data.day === today
+  const quizPlays  = sameDay ? (data.quizPlays  || 0)  : 0
+  const drillPlays = sameDay ? (data.drillPlays || {}) : {}
+
   const consume = (tier, correct) => {
     const xpGain = correct ? (tier === 'advanced' || tier === 'drill' ? 18 : tier === 'intermediate' ? 10 : 5) : 0
-    setData(d => ({ streak: correct ? (d.streak||0)+1 : 0, xp: (d.xp||0) + xpGain }))
+    setData(d => ({ ...d, streak: correct ? (d.streak||0)+1 : 0, xp: (d.xp||0) + xpGain }))
   }
+
+  // leak = null → the mixed daily quiz; leak = category → that leak's drill.
+  const playsToday = (leak) => leak ? (drillPlays[leak] || 0) : quizPlays
+
+  // Record one completed round. Resets the per-day counters when the date rolls over.
+  const recordPlay = (leak) => {
+    setData(d => {
+      const fresh = d.day === today ? d : { ...d, day: today, quizPlays: 0, drillPlays: {} }
+      if (leak) {
+        const dp = { ...(fresh.drillPlays || {}) }
+        dp[leak] = (dp[leak] || 0) + 1
+        return { ...fresh, day: today, drillPlays: dp }
+      }
+      return { ...fresh, day: today, quizPlays: (fresh.quizPlays || 0) + 1 }
+    })
+  }
+
   const resetAll = () => setData({ streak:0, xp:0 })
 
-  return { consume, resetAll, streak:data.streak||0, xp:data.xp||0 }
+  return { consume, resetAll, recordPlay, playsToday, streak:data.streak||0, xp:data.xp||0 }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -647,7 +677,7 @@ function buildQueue() {
   return q
 }
 
-function QuizSession({ onBack, consume, queue: externalQueue, drillLabel, onReplay }) {
+function QuizSession({ onBack, consume, queue: externalQueue, drillLabel, onReplay, isLastPlay = false, onComplete }) {
   const [queue]    = useState(() => externalQueue || buildQueue())
   const total      = queue.length
   const [qIdx,     setQIdx]    = useState(0)
@@ -656,6 +686,16 @@ function QuizSession({ onBack, consume, queue: externalQueue, drillLabel, onRepl
   const [streak,   setStreak]  = useState(0)
   const [done,     setDone]    = useState(false)
   const [timerOn,  setTimerOn] = useState(true)
+  // Freeze at mount: once we record this round, the parent's live play-count would
+  // flip isLastPlay mid-results-screen — capturing it here keeps this round's screen stable.
+  const [isLast]   = useState(isLastPlay)
+  const recorded   = useRef(false)
+
+  const finished = done || qIdx >= queue.length
+  // Count the round exactly once, the moment the results screen is reached.
+  useEffect(() => {
+    if (finished && !recorded.current) { recorded.current = true; onComplete?.() }
+  }, [finished])
 
   const q       = queue[qIdx]
   const tier    = q?.tier || 'beginner'
@@ -720,12 +760,27 @@ function QuizSession({ onBack, consume, queue: externalQueue, drillLabel, onRepl
           </div>
         )}
         <div style={{ width:'100%', display:'flex', flexDirection:'column', gap:'8px' }}>
-          <button onClick={() => (onReplay ? onReplay() : window.location.reload())} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'12px', borderRadius:'8px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', minHeight:'44px', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 14px rgba(84,233,138,0.2)' }}>
-            <RotateCcw size={14}/> {drillLabel ? 'Drill Again' : 'Play Again'}
-          </button>
-          <button onClick={onBack} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'11px', borderRadius:'8px', border:'none', background:C.surfaceHigh, color:C.textMuted, fontWeight:600, fontSize:'0.82rem', cursor:'pointer', minHeight:'44px' }}>
-            <ArrowLeft size={14}/> Back
-          </button>
+          {!isLast ? (
+            <>
+              {/* Round 1 of 2 — offer the single replay, then ask to finish. */}
+              <button onClick={() => (onReplay ? onReplay() : window.location.reload())} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'12px', borderRadius:'8px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', minHeight:'44px', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 14px rgba(84,233,138,0.2)' }}>
+                <RotateCcw size={14}/> {drillLabel ? 'Drill Again' : 'Play Again'}
+              </button>
+              <button onClick={onBack} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'11px', borderRadius:'8px', border:'none', background:C.surfaceHigh, color:C.textMuted, fontWeight:600, fontSize:'0.82rem', cursor:'pointer', minHeight:'44px' }}>
+                <ArrowLeft size={14}/> Finish
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Round 2 done — locked until tomorrow to build the daily habit. */}
+              <div style={{ width:'100%', display:'flex', alignItems:'center', gap:'8px', justifyContent:'center', padding:'12px', borderRadius:'8px', background:'rgba(84,233,138,0.08)', border:`1px solid ${C.primaryBorder}`, color:C.text, fontSize:'0.78rem', fontWeight:600, lineHeight:1.4, textAlign:'center' }}>
+                <CheckCircle size={15} color={C.primary}/> Done for today — come back tomorrow to keep your streak 🔥
+              </div>
+              <button onClick={onBack} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'11px', borderRadius:'8px', border:'none', background:C.surfaceHigh, color:C.textMuted, fontWeight:600, fontSize:'0.82rem', cursor:'pointer', minHeight:'44px' }}>
+                <ArrowLeft size={14}/> Back
+              </button>
+            </>
+          )}
         </div>
       </div>
     )
@@ -866,8 +921,9 @@ export default function Quiz() {
     if (proLoading) return
     const d = searchParams.get('drill')
     if (d && isDrillable(d)) {
-      if (isPro) { setDrillLeak(d); setActive(true) }
-      else { setShowPaywall(true) }
+      if (!isPro) { setShowPaywall(true) }
+      else if (dp.playsToday(d) < MAX_PLAYS) { setDrillLeak(d); setActive(true) }
+      // else: this leak is maxed for today → fall through to the dashboard (shows locked).
     }
   }, [searchParams, isPro, proLoading])
 
@@ -881,7 +937,8 @@ export default function Quiz() {
   )
 
   const startDrill = (leak) => {
-    if (!isPro) { setShowPaywall(true); return }   // leak drills are Pro (same as Leak/Debrief)
+    if (!isPro) { setShowPaywall(true); return }      // leak drills are Pro (same as Leak/Debrief)
+    if (dp.playsToday(leak) >= MAX_PLAYS) return       // done for today — locked until tomorrow
     setDrillLeak(leak); setActive(true)
   }
   const exitSession = () => {
@@ -902,6 +959,8 @@ export default function Quiz() {
           consume={drillLeak ? undefined : dp.consume}
           queue={drillLeak ? drillQueue : undefined}
           drillLabel={drillLeak ? drillTitle(drillLeak) : undefined}
+          isLastPlay={dp.playsToday(drillLeak) >= MAX_PLAYS - 1}
+          onComplete={() => dp.recordPlay(drillLeak)}
         />
       </div>
     )
@@ -931,16 +990,22 @@ export default function Quiz() {
             pointerEvents: isPro ? 'auto' : 'none',
             userSelect: isPro ? 'auto' : 'none',
           }} aria-hidden={!isPro}>
-            {drillableLeaks.map(l => (
-              <button key={l.category} onClick={() => startDrill(l.category)} style={{
-                display:'flex', alignItems:'center', gap:'10px', padding:'11px 12px', borderRadius:'9px',
-                border:`1px solid ${C.border}`, background:C.surfaceHigh, cursor:'pointer', textAlign:'left',
-              }}>
-                <span style={{ fontSize:'0.8rem', fontWeight:600, color:C.text, flex:1 }}>{LEAK_LABELS[l.category] || l.category}</span>
-                <span style={{ fontSize:'0.62rem', color:C.primary, fontWeight:700 }}>{drillTitle(l.category)}</span>
-                <ChevronRight size={15} color={C.textMuted} />
-              </button>
-            ))}
+            {drillableLeaks.map(l => {
+              const doneToday = isPro && dp.playsToday(l.category) >= MAX_PLAYS
+              return (
+                <button key={l.category} onClick={() => startDrill(l.category)} disabled={doneToday} style={{
+                  display:'flex', alignItems:'center', gap:'10px', padding:'11px 12px', borderRadius:'9px',
+                  border:`1px solid ${C.border}`, background:C.surfaceHigh, cursor:doneToday?'default':'pointer',
+                  textAlign:'left', opacity:doneToday?0.55:1,
+                }}>
+                  <span style={{ fontSize:'0.8rem', fontWeight:600, color:C.text, flex:1 }}>{LEAK_LABELS[l.category] || l.category}</span>
+                  {doneToday
+                    ? <span style={{ fontSize:'0.6rem', color:C.textMuted, fontWeight:700, display:'flex', alignItems:'center', gap:'4px' }}><CheckCircle size={12} color={C.primary}/> Done today</span>
+                    : <span style={{ fontSize:'0.62rem', color:C.primary, fontWeight:700 }}>{drillTitle(l.category)}</span>}
+                  {doneToday ? <Clock size={14} color={C.textMuted} /> : <ChevronRight size={15} color={C.textMuted} />}
+                </button>
+              )
+            })}
           </div>
           {isPro && (
             <div style={{ fontSize:'0.62rem', color:C.textMuted, marginTop:'10px', lineHeight:1.5 }}>
@@ -1007,16 +1072,29 @@ export default function Quiz() {
         </div>
       </div>
 
-      <button onClick={() => setActive(true)} style={{
-        width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px',
-        padding:'14px', borderRadius:'10px', border:'none',
-        background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)',
-        color:'#061a0e', fontWeight:700, fontSize:'0.9rem', cursor:'pointer', minHeight:'52px',
-        boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 20px rgba(84,233,138,0.25)',
-        letterSpacing:'0.03em',
-      }}>
-        Start Quiz →
-      </button>
+      {dp.playsToday(null) >= MAX_PLAYS ? (
+        <div style={{
+          width:'100%', display:'flex', flexDirection:'column', alignItems:'center', gap:'5px',
+          padding:'16px', borderRadius:'10px', background:'rgba(84,233,138,0.07)',
+          border:`1px solid ${C.primaryBorder}`, textAlign:'center', minHeight:'52px', justifyContent:'center',
+        }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'7px', fontSize:'0.85rem', fontWeight:700, color:C.text }}>
+            <CheckCircle size={16} color={C.primary}/> Daily quiz complete
+          </div>
+          <span style={{ fontSize:'0.7rem', color:C.textMuted }}>Come back tomorrow to keep your streak 🔥</span>
+        </div>
+      ) : (
+        <button onClick={() => setActive(true)} style={{
+          width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px',
+          padding:'14px', borderRadius:'10px', border:'none',
+          background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)',
+          color:'#061a0e', fontWeight:700, fontSize:'0.9rem', cursor:'pointer', minHeight:'52px',
+          boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 20px rgba(84,233,138,0.25)',
+          letterSpacing:'0.03em',
+        }}>
+          Start Quiz →
+        </button>
+      )}
 
       {showPaywall && <Paywall onClose={() => setShowPaywall(false)} onRestore={refreshPro} />}
     </div>

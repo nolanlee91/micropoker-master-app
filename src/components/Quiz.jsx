@@ -620,12 +620,14 @@ function consumeAdvCache() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MIXED QUIZ SESSION — 2 easy + 3 medium + 5 hard = 10 questions
+// MIXED QUIZ SESSION — 1 easy + 2 medium + 3 hard = 6 questions
 // ─────────────────────────────────────────────────────────────────────────────
+// A short daily round (1 Easy + 2 Medium + 3 Hard) — come back tomorrow rather than
+// grinding the whole pool in one sitting and hitting repeats.
 const MIXED_QUEUE = [
-  'beginner','beginner',
-  'intermediate','intermediate','intermediate',
-  'advanced','advanced','advanced','advanced','advanced',
+  'beginner',
+  'intermediate','intermediate',
+  'advanced','advanced','advanced',
 ]
 const TOTAL_Q = MIXED_QUEUE.length
 const TIMER_BY_TIER = { beginner:20, intermediate:60, advanced:60, drill:45 }
@@ -707,7 +709,7 @@ function QuizSession({ onBack, consume, queue: externalQueue, drillLabel, onRepl
         {/* Score breakdown — mixed quiz only */}
         {!drillLabel && (
           <div style={{ width:'100%', background:C.surfaceHigh, borderRadius:'10px', padding:'12px 16px', display:'flex', justifyContent:'space-around' }}>
-            {[['Easy','beginner',2],['Medium','intermediate',3],['Hard','advanced',5]].map(([label, t, cnt]) => (
+            {[['Easy','beginner',1],['Medium','intermediate',2],['Hard','advanced',3]].map(([label, t, cnt]) => (
               <div key={t} style={{ textAlign:'center' }}>
                 <div style={{ fontSize:'0.55rem', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:TIER_COLORS[t], marginBottom:'4px' }}>{label}</div>
                 <div style={{ fontSize:'1rem', fontWeight:700, color:C.text }}>{cnt}q</div>
@@ -863,7 +865,7 @@ export default function Quiz() {
   const drillableLeaks = leaks.filter(l => isDrillable(l.category)).slice(0, 4)
 
   const drillQueue = useMemo(
-    () => (drillLeak ? buildDrillQueue(drillLeak, 6) : null),
+    () => (drillLeak ? buildDrillQueue(drillLeak, 3) : null),
     [drillLeak, sessionKey]
   )
 
@@ -895,7 +897,7 @@ export default function Quiz() {
     <div style={{ padding:'16px', paddingBottom:'120px', maxWidth:'720px', margin:'0 auto', paddingTop:'20px' }}>
       <div style={{ marginBottom:'16px' }}>
         <h1 style={{ fontSize:'1.3rem', fontWeight:700, color:C.text, letterSpacing:'-0.02em', marginBottom:'4px' }}>Quiz</h1>
-        <p style={{ fontSize:'0.72rem', color:C.textMuted }}>10 questions · 2 Easy + 3 Medium + 5 Hard</p>
+        <p style={{ fontSize:'0.72rem', color:C.textMuted }}>6 questions · 1 Easy + 2 Medium + 3 Hard · come back daily</p>
       </div>
 
       {/* GROWTH-3: drill YOUR leaks — the bridge from Coach → Leak Profile → practice. */}
@@ -918,7 +920,7 @@ export default function Quiz() {
             ))}
           </div>
           <div style={{ fontSize:'0.62rem', color:C.textMuted, marginTop:'10px', lineHeight:1.5 }}>
-            From your Leak Profile — 6 targeted spots each. Practice the exact spots costing you money.
+            From your Leak Profile — a quick 3-spot drill each. Practice the exact spots costing you money.
           </div>
         </div>
       )}
@@ -945,9 +947,9 @@ export default function Quiz() {
         <div style={{ fontSize:'0.6rem', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'12px' }}>Round Format</div>
         <div style={{ display:'flex', gap:'8px' }}>
           {[
-            { label:'Easy', count:2, color:C.primary, topics:'Outs · Equity · Hand Rankings' },
-            { label:'Medium', count:3, color:C.secondary, topics:'Ranges · Pot Odds · Combos' },
-            { label:'Hard', count:5, color:'#b06aff', topics:'Tough folds · Thin value · Bluffs' },
+            { label:'Easy', count:1, color:C.primary, topics:'Outs · Equity · Hand Rankings' },
+            { label:'Medium', count:2, color:C.secondary, topics:'Ranges · Pot Odds · Combos' },
+            { label:'Hard', count:3, color:'#b06aff', topics:'Tough folds · Thin value · Bluffs' },
           ].map(({ label, count, color, topics }) => (
             <div key={label} style={{ flex:1, background:C.surfaceHigh, borderRadius:'8px', padding:'10px 12px', borderTop:`2px solid ${color}` }}>
               <div style={{ fontSize:'1.1rem', fontWeight:700, color, marginBottom:'2px', fontVariantNumeric:'tabular-nums' }}>{count}q</div>

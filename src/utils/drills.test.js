@@ -12,6 +12,22 @@ describe('drill coverage', () => {
   }
 })
 
+// Hand-authored spots are easy to fat-finger a duplicate card into. Scan every
+// curated bank spot: hero+board must be distinct, valid cards.
+describe('curated spots have no duplicate cards', () => {
+  const RE = /^(?:10|[2-9TJQKA])[shdc]$/i
+  for (const [leak, meta] of Object.entries(DRILL_META)) {
+    if (!meta.bank) continue
+    it(`${leak}: every spot uses distinct valid cards`, () => {
+      meta.bank.forEach((s, i) => {
+        const cards = [...s.heroCards, ...s.boardCards]
+        cards.forEach(c => expect(RE.test(c), `${leak}[${i}] bad card ${c}`).toBe(true))
+        expect(new Set(cards).size, `${leak}[${i}] has a duplicate card`).toBe(cards.length)
+      })
+    })
+  }
+})
+
 describe('hard spot pool', () => {
   it('randomHardSpot returns a valid spot with one correct option', () => {
     for (let i = 0; i < 30; i++) {

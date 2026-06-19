@@ -588,7 +588,9 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
     if (!handEval || hole.length < 2) return null
     const full = handEval.contextLevel === 'full'
     return {
-      cards:   [...hole, ...board],
+      // Keep hole and board separate so the read shows "Hero | Board" — a flat row
+      // mixing both reads as gibberish (e.g. "QJQJ4…", can't tell which 2 are yours).
+      hole, board,
       // Only claim a made-hand strength when we have the full board — otherwise
       // just confirm we read the hole cards correctly (no misleading label).
       label:   full ? handEval.heroHandStrength : 'Reading your cards…',
@@ -1000,9 +1002,25 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
               <CheckCircle size={14} color={C.primary} />
             </div>
             <div style={{ flex:1, padding:'10px 14px', background:'rgba(22,27,34,0.9)', border:`1px solid ${C.primaryBorder}`, borderRadius:'4px 16px 16px 16px', display:'flex', flexDirection:'column', gap:'8px' }}>
-              {instantRead.cards.length > 0 && (
-                <div style={{ display:'flex', gap:'3px', flexWrap:'wrap' }}>
-                  {instantRead.cards.map(c => <MiniCard key={c} card={c} />)}
+              {(instantRead.hole?.length > 0 || instantRead.board?.length > 0) && (
+                <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}>
+                  {instantRead.hole?.length > 0 && (
+                    <>
+                      <span style={{ fontSize:'0.5rem', fontWeight:800, letterSpacing:'0.08em', color:C.textMuted }}>HERO</span>
+                      <div style={{ display:'flex', gap:'3px' }}>
+                        {instantRead.hole.map(c => <MiniCard key={c} card={c} />)}
+                      </div>
+                    </>
+                  )}
+                  {instantRead.board?.length > 0 && (
+                    <>
+                      <span style={{ width:'1px', alignSelf:'stretch', background:C.border, margin:'0 2px' }} />
+                      <span style={{ fontSize:'0.5rem', fontWeight:800, letterSpacing:'0.08em', color:C.textMuted }}>BOARD</span>
+                      <div style={{ display:'flex', gap:'3px' }}>
+                        {instantRead.board.map(c => <MiniCard key={c} card={c} />)}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
               <div style={{ fontSize:'0.8rem', fontWeight:700, color:C.text, letterSpacing:'-0.01em' }}>

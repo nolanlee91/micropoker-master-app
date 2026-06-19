@@ -162,7 +162,7 @@ export default function Debrief() {
         {isPro && <span style={{ marginLeft:'auto', fontSize:'0.58rem', fontWeight:800, letterSpacing:'0.06em', color:C.primary, background:C.primaryDim, padding:'3px 8px', borderRadius:'6px' }}>PRO</span>}
       </div>
       <p style={{ fontSize:'0.74rem', color:C.textMuted, marginBottom:'18px', lineHeight:1.5 }}>
-        Analyze a night's key hands in the AI Coach, then get one read on the whole session — what repeated, the costliest spot, and one thing to fix next time.
+        Every hand you analyze in the AI Coach is saved automatically and grouped by the day you analyzed it. Each day becomes a debrief — one read on the whole night: what repeated, the costliest spot, and one thing to fix next time. <span style={{ opacity:0.8 }}>(Separate from the sessions you log in Bankroll.)</span>
       </p>
 
       {sessions.length === 0 && (
@@ -170,7 +170,7 @@ export default function Debrief() {
           <ClipboardList size={34} color={C.textMuted} style={{ opacity:0.4 }} />
           <div style={{ fontSize:'0.84rem', color:C.text, fontWeight:600 }}>No sessions to debrief yet</div>
           <div style={{ fontSize:'0.78rem', color:C.textMuted, lineHeight:1.6, maxWidth:'300px' }}>
-            Analyze at least 2 hands from one night in the AI Coach. They'll group into a session you can debrief here.
+            Analyze at least 2 hands from one night in the AI Coach. They'll group by day here, ready to debrief.
           </div>
           <button onClick={() => navigate('/coach')} style={{ marginTop:'2px', display:'flex', alignItems:'center', gap:'7px', padding:'10px 16px', borderRadius:'10px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontSize:'0.8rem', fontWeight:700, cursor:'pointer' }}>
             <BrainCircuit size={15} /> Go to AI Coach
@@ -205,11 +205,11 @@ export default function Debrief() {
                   ) : st.loading ? (
                     <div style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'0.74rem', color:C.textMuted, marginTop:'12px' }}>
                       <div style={{ width:'14px', height:'14px', border:`2px solid ${C.primaryBorder}`, borderTopColor:C.primary, borderRadius:'50%', animation:'dbspin 0.8s linear infinite' }} />
-                      Reading your session…
+                      Reading these hands…
                     </div>
                   ) : (
                     <button onClick={() => gen(session)} style={{ marginTop:'12px', display:'flex', alignItems:'center', gap:'6px', padding:'8px 12px', borderRadius:'9px', border:`1px solid ${C.primaryBorder}`, background:C.primaryDim, color:C.primary, fontSize:'0.74rem', fontWeight:700, cursor:'pointer' }}>
-                      <Sparkles size={13} /> Debrief this session →
+                      <Sparkles size={13} /> Debrief these {session.count} hands →
                     </button>
                   )
                 ) : (

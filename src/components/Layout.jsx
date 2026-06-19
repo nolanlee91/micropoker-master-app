@@ -10,7 +10,7 @@ const NAV = [
   { path: '/bankroll', label: 'Bankroll', icon: Wallet },
   { path: '/coach',    label: 'Coach',    icon: BrainCircuit, primary: true },
   { path: '/leaks',    label: 'Leaks',    icon: TrendingDown, primary: true },
-  { path: '/debrief',  label: 'Debrief',  icon: ClipboardList },
+  { path: '/debrief',  label: 'Debrief',  icon: ClipboardList, primary: true },
   { path: '/quiz',     label: 'Quiz',     icon: Zap },
   { path: '/odds',     label: 'Odds',     icon: Calculator },
 ]
@@ -416,23 +416,23 @@ export default function Layout({ children }) {
         <nav style={{ position:'fixed', bottom:0, left:0, right:0, height:'60px', background:C.surface, borderTop:`1px solid ${C.border}`, display:'flex', zIndex:200 }}>
           {NAV.map((item, i) => {
             const Icon = item.icon
-            // Divider wherever we cross between the primary (Coach/Leaks) group and
-            // the rest — visually fences off the two core features in the middle.
+            // Divider wherever we cross between the primary group (Coach/Leaks/
+            // Debrief) and the rest — visually fences off the core features.
             const showDivider = i > 0 && NAV[i - 1].primary !== item.primary
-            const iconSize = item.primary ? 21 : 17
+            const iconSize = item.primary ? 21 : 16
             const idleColor = item.primary ? C.text : C.textMuted   // primary pops even when inactive
             return (
               <React.Fragment key={item.path}>
                 {showDivider && <div style={{ width:'1px', alignSelf:'center', height:'28px', background:C.border }} />}
                 <NavLink to={item.path} style={({ isActive }) => ({
-                  flex: item.primary ? 1.3 : 1,
+                  flex: item.primary ? 1.35 : 0.8,
                   display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
                   gap:'3px', textDecoration:'none',
                 })}>
                   {({ isActive }) => (<>
                     <Icon size={iconSize} color={isActive ? C.primary : idleColor} strokeWidth={item.primary ? 2.4 : 2} />
                     <span style={{
-                      fontSize: item.primary ? '0.56rem' : '0.5rem',
+                      fontSize: item.primary ? '0.56rem' : '0.46rem',
                       fontWeight: isActive ? 700 : (item.primary ? 600 : 400),
                       color: isActive ? C.primary : idleColor,
                       letterSpacing:'0.01em',

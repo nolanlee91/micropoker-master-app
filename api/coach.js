@@ -173,7 +173,12 @@ export default async function handler(req, res) {
   // paying user over an infra hiccup).
   const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY
   const CAP_ANON = parseInt(process.env.COACH_CAP_ANON || '2', 10)
-  const CAP_FREE = parseInt(process.env.COACH_CAP_FREE || process.env.COACH_DAILY_CAP || '8', 10)
+  // Free analysis is a TASTE that feeds the funnel, not a daily utility — Pro's real
+  // value is the whole coaching layer (Leak Profile + Debrief + Drills), not call
+  // volume. So the steady free cap is lean (3/day), but a brand-new free account
+  // gets a generous FIRST day to wow them before the wall appears.
+  const CAP_FREE      = parseInt(process.env.COACH_CAP_FREE || process.env.COACH_DAILY_CAP || '3', 10)
+  const CAP_FREE_DAY1 = parseInt(process.env.COACH_CAP_FREE_DAY1 || '8', 10)
   const CAP_PRO  = parseInt(process.env.COACH_CAP_PRO  || '20', 10)
   // Per-IP cap targets the ONE real farming vector: rotating throwaway ANONYMOUS
   // accounts on a single device/IP to re-roll the free Pro demo. Applied to anon
@@ -223,7 +228,16 @@ export default async function handler(req, res) {
         const notExpired   = !sub?.current_period_end || new Date(sub.current_period_end) > new Date()
         isProUser = activeStatus && notExpired
       }
-      const cap = user.is_anonymous ? CAP_ANON : isProUser ? CAP_PRO : CAP_FREE
+      // Day-1 activation bonus: if the free account was created today (UTC, same
+      // boundary the daily counter resets on), give the generous first-day cap;
+      // from day 2 it settles to the lean steady cap.
+      let freeCap = CAP_FREE
+      try {
+        const createdDay = new Date(user.created_at).toISOString().slice(0, 10)
+        const todayUTC   = new Date().toISOString().slice(0, 10)
+        if (createdDay === todayUTC) freeCap = CAP_FREE_DAY1
+      } catch {}
+      const cap = user.is_anonymous ? CAP_ANON : isProUser ? CAP_PRO : freeCap
 
       const { data: count, error: capErr } = await admin.rpc('bump_coach_usage', { p_user: user.id })
       if (!capErr && typeof count === 'number' && count > cap) {

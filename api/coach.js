@@ -250,9 +250,11 @@ export default async function handler(req, res) {
 
       const { data: count, error: capErr } = await admin.rpc('bump_coach_usage', { p_user: user.id })
       if (!capErr && typeof count === 'number' && count > cap) {
+        // "requests" not "hands": the cap counts every AI call (analysis + follow-up
+        // + fix plan + debrief), so a user can hit it without analyzing that many hands.
         const msg = user.is_anonymous
-          ? `You've used your ${cap} free hands for today. Sign in with Google to keep going — it's free.`
-          : `Daily limit reached (${cap} hands). Come back tomorrow — this keeps the AI fast for everyone.`
+          ? `You've used your ${cap} free AI requests for today. Sign in with Google to keep going — it's free.`
+          : `Daily limit reached (${cap} AI requests). Come back tomorrow — this keeps the AI fast for everyone.`
         return res.status(429).json({ error: msg })
       }
     } catch (e) {

@@ -519,12 +519,12 @@ export default function HandHistory() {
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:'16px' }}>
         <div>
           <h1 style={{ fontSize:'1.3rem', fontWeight:700, color:C.text, letterSpacing:'-0.02em', marginBottom:'3px' }}>Hand Journal</h1>
-          <p style={{ fontSize:'0.72rem', color:C.textMuted }}>Save memorable hands &amp; your own notes{hands.length ? ` · ${hands.length} logged` : ''}</p>
+          <p style={{ fontSize:'0.72rem', color:C.textMuted }}>Save memorable hands &amp; your own notes{hands.length ? <span style={{ whiteSpace:'nowrap' }}> · {hands.length} logged</span> : ''}</p>
         </div>
         {!formMode && (
           <button onClick={openAdd} style={{
             display:'flex', alignItems:'center', gap:'6px', padding:'9px 16px',
-            borderRadius:'8px', border:'none', minHeight:'44px',
+            borderRadius:'8px', border:'none', minHeight:'44px', flexShrink:0, whiteSpace:'nowrap',
             background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)',
             color:'#061a0e', fontWeight:700, fontSize:'0.75rem', cursor:'pointer',
             boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18),0 0 16px rgba(84,233,138,0.25)',

@@ -125,7 +125,7 @@
   <div class="verdict-row"><span>Còn lại để thu tiền THẬT</span><span class="v">Bật Stripe <b>Live mode</b> (việc kinh doanh)</span></div>
   <div class="verdict-row"><span>🔴 P0 + 🟠 P1</span><span class="v yes">✅ Hoàn tất</span></div>
   <div class="verdict-row"><span>⚠️ RISK (rủi ro moat & giữ chân)</span><span class="v yes">✅ 4/4 code xong · còn lại chờ analytics/user thật</span></div>
-  <div class="verdict-row"><span>📈 GROWTH (giữ chân / MRR)</span><span class="v" style="color:var(--growth)">2/4 — fix plan động + session debrief xong · 3,4 còn lại</span></div>
+  <div class="verdict-row"><span>📈 GROWTH (giữ chân / MRR)</span><span class="v" style="color:var(--growth)">3/4 — fix plan động + debrief + mốc 3-hand xong · GROWTH-3 (Quiz) còn lại</span></div>
 </div>
 
 <div class="progress-wrap" id="progress"></div>
@@ -271,10 +271,11 @@ const ITEMS = [
     desc:'Cầu retention hiển nhiên. Quiz.jsx (1100+ dòng) đang "parked", range GTO cố định, KHÔNG nối leak. Reviewer chỉ đúng: leak #1 của user → bộ spot luyện đúng leak đó → vòng lặp "phát hiện → luyện → đo lại giảm". Gắn kết Coach ↔ Leak ↔ Quiz.',
     files:['Quiz.jsx (parked, chưa nối leak)','utils/leaks.js (category → bộ câu hỏi)'],
     fix:'Map mỗi leak_category → tập spot luyện; từ Leak Profile thêm CTA "Drill this leak". Cần hồi sinh + tái cấu trúc Quiz — feature lớn, làm sau GROWTH-2.' },
-  { id:'GROWTH-4', sev:'growth', title:'Hạ/đưa sớm "aha" cấp pattern cho dân volume thấp',
+  { id:'GROWTH-4', sev:'growth', done:true, status:'DONE', notes:'2026-06-18. Hạ mốc mở khoá Leak Profile 5 → 3 hand (hằng số UNLOCK_HANDS ở leaks.js, dùng lại khắp LeakProfile: revealed, thẻ "N/3", progress bar, preview "at 3 hands"). Lý do KHÔNG cần analytics: phản hồi trực tiếp của người chơi cash ("5 hand = nhiều tuần với volume của tôi") chính là tín hiệu. Không phá honesty: caveat "early read" (<10 hand) + preview "patterns taking shape" (RISK-1/2/3) vẫn nguyên, càng hợp lý ở mẫu nhỏ. Con số TỐI ƯU (3 hay 4) tinh chỉnh sau khi có funnel data. Build pass.',
+    title:'Hạ/đưa sớm "aha" cấp pattern cho dân volume thấp',
     desc:'Live grinder cuối tuần chỉ 2–3 hand đáng nhập/buổi → 5 hand = nhiều tuần, trend ≥10 hand gần như không kích. Cân nhắc: aha cấp pattern sớm hơn, hoặc gom theo CHỦ ĐỀ (vd "3 hand river của bạn đều fold-được") thay vì chờ đủ số. Cẩn thận: đừng phá honesty mẫu-nhỏ của RISK-1/2.',
-    files:['utils/leaks.js (ngưỡng)','LeakProfile.jsx (điều kiện reveal)'],
-    fix:'Nhỏ nhưng cần cân nhắc trade-off honesty + đo bằng analytics. Một phần đã giảm đau nhờ RISK-3 (preview "patterns taking shape"). Chốt ngưỡng khi có data funnel.' },
+    files:['utils/leaks.js (UNLOCK_HANDS=3)','LeakProfile.jsx (reveal + copy theo hằng số)'],
+    fix:'Đã hạ 5→3 dựa trên phản hồi người chơi thật (không đoán mò); honesty guardrails giữ nguyên. Tinh chỉnh con số chính xác khi có analytics funnel (% user đạt mốc). Tuỳ chọn thêm sau: hé tên leak recurring sớm hơn làm "aha".' },
 ];
 const SEV_LABEL = {p0:'P0',p1:'P1',p2:'P2',p3:'P3',ok:'OK',feat:'NEW',risk:'RISK',growth:'GROWTH'};
 const STATUSES = ['TODO','IN PROGRESS','DONE','WONTFIX'];

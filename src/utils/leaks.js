@@ -50,6 +50,13 @@ export function analyzedCount(hands) {
   return (hands || []).filter(h => h.leakCategory || h.aiAnalysis).length
 }
 
+// Hands needed to unlock the full Leak Profile. GROWTH-4: lowered from 5 → 3 on
+// direct cash-player feedback — a weekend live grinder logs ~2-3 notable hands a
+// session, so 5 meant waiting weeks to see any value. The small-sample honesty
+// caveats (early-read banner, "patterns taking shape" preview) keep 3 from
+// overclaiming.
+export const UNLOCK_HANDS = 3
+
 // Minimum analyzed hands before a trend means anything (≥5 per window). Below this
 // the two halves are too small and the trend is just noise.
 export const TREND_MIN_HANDS = 10

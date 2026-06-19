@@ -5,7 +5,7 @@ import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { usePro } from '../hooks/usePro'
 import { supabase } from '../lib/supabase'
-import { computeLeaks, computeLeakTrends, analyzedCount, recurringCount, LEAK_LABELS } from '../utils/leaks'
+import { computeLeaks, computeLeakTrends, analyzedCount, recurringCount, LEAK_LABELS, UNLOCK_HANDS } from '../utils/leaks'
 import Paywall from './Paywall'
 
 // Personalized fix-plans are generated from the user's own hands (an API call), so
@@ -153,7 +153,7 @@ export default function LeakProfile() {
     // on success the browser redirects to Google and back
   }, [linkGoogle])
 
-  const revealed = nAnalyzed >= 5 && leaks.length > 0
+  const revealed = nAnalyzed >= UNLOCK_HANDS && leaks.length > 0
 
   return (
     <div style={{ background:C.bg, minHeight:'100%', padding:'16px 16px 100px', maxWidth:'720px', margin:'0 auto' }}>
@@ -173,17 +173,17 @@ export default function LeakProfile() {
       {nAnalyzed >= 1 && !revealed && (
         <div style={{ padding:'18px', borderRadius:'12px', background:C.surface, border:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:'10px' }}>
           <div style={{ fontSize:'0.82rem', color:C.text, fontWeight:600 }}>
-            {nAnalyzed < 5
-              ? `${nAnalyzed}/5 hands — your biggest leak unlocks at 5.`
+            {nAnalyzed < UNLOCK_HANDS
+              ? `${nAnalyzed}/${UNLOCK_HANDS} hands — your biggest leak unlocks at ${UNLOCK_HANDS}.`
               : 'No leaks found yet — solid play. Keep analyzing hands.'}
           </div>
           <div style={{ height:'8px', borderRadius:'4px', background:'rgba(255,255,255,0.06)', overflow:'hidden' }}>
-            <div style={{ width:`${Math.min(nAnalyzed/5*100,100)}%`, height:'100%', background:C.primary, transition:'width 0.4s' }} />
+            <div style={{ width:`${Math.min(nAnalyzed/UNLOCK_HANDS*100,100)}%`, height:'100%', background:C.primary, transition:'width 0.4s' }} />
           </div>
           {/* RISK-3: curiosity gap before the 5-hand unlock. Show that real patterns
               are already forming (blurred + locked) so a lazy user has a concrete
               reason to paste the next hand — without asserting a leak from a tiny
-              sample (kept tentative: "taking shape", unlocks at 5). */}
+              sample (kept tentative: "taking shape", unlocks at UNLOCK_HANDS). */}
           {leaks.length > 0 && (
             <div style={{ display:'flex', flexDirection:'column', gap:'7px', padding:'11px 12px', borderRadius:'10px', background:C.surfaceHi, border:`1px solid ${C.border}` }}>
               <div style={{ fontSize:'0.62rem', fontWeight:800, letterSpacing:'0.07em', textTransform:'uppercase', color:C.textMuted }}>
@@ -196,7 +196,7 @@ export default function LeakProfile() {
                   <Lock size={11} color={C.textMuted} />
                 </div>
               ))}
-              <div style={{ fontSize:'0.66rem', color:C.textMuted }}>Ranked, with $ cost, at 5 hands.</div>
+              <div style={{ fontSize:'0.66rem', color:C.textMuted }}>Ranked, with $ cost, at {UNLOCK_HANDS} hands.</div>
             </div>
           )}
           {/* Selection-bias nudge: the profile is only as honest as the hands fed in.

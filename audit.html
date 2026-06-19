@@ -9,7 +9,7 @@
     --bg:#0B0E14; --surface:#161B22; --surfaceHi:#1E2530; --border:#21262D;
     --text:#E6EDF3; --muted:#7D8590; --primary:#54e98a; --blue:#92ccff;
     --accent:#ffc0ac; --red:#f47067;
-    --p0:#f47067; --p1:#ffb347; --p2:#92ccff; --p3:#7D8590;
+    --p0:#f47067; --p1:#ffb347; --p2:#92ccff; --p3:#7D8590; --risk:#d2a8ff;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{
@@ -64,6 +64,7 @@
   .item.p2{border-left-color:var(--p2)} .item.p3{border-left-color:var(--p3)}
   .item.ok{border-left-color:var(--primary)}
   .item.feat{border-left-color:var(--blue)}
+  .item.risk{border-left-color:var(--risk)}
   .item.done{opacity:0.55}
   .item.done .ititle{text-decoration:line-through;text-decoration-color:var(--muted)}
   .item-head{display:flex;align-items:flex-start;gap:12px}
@@ -78,6 +79,7 @@
   .badge.p3{background:rgba(125,133,144,0.15);color:var(--p3)}
   .badge.ok{background:rgba(84,233,138,0.15);color:var(--primary)}
   .badge.feat{background:rgba(146,204,255,0.15);color:var(--blue)}
+  .badge.risk{background:rgba(210,168,255,0.15);color:var(--risk)}
   .desc{font-size:0.84rem;color:#c9d1d9;margin-top:8px}
   .desc .lbl{color:var(--muted);font-weight:600}
   .meta{font-size:0.78rem;color:var(--muted);margin-top:8px;display:flex;flex-direction:column;gap:4px}
@@ -130,6 +132,7 @@
   <button data-f="p1">🟠 P1</button>
   <button data-f="p2">🟡 P2</button>
   <button data-f="p3">⚪ P3</button>
+  <button data-f="risk">⚠️ RISK</button>
   <button data-f="open">Chưa xong</button>
 </div>
 
@@ -226,8 +229,27 @@ const ITEMS = [
     desc:'Live cash $1/$2–$1/$3 hầu hết là bàn FULL RING 9 người. Nên range GTO 100bb 9-max hardcode là CHUẨN cho đối tượng live. (6-max chỉ là chuyện của online micro.)',
     files:['Quiz.jsx (range 9-max — giữ nguyên)'],
     fix:'Không sửa. Chỉ thêm 6-max nếu sau này mở rộng sang online micro.' },
+
+  { id:'RISK-1', sev:'risk', done:true, status:'DONE', notes:'2026-06-18. Làm (a)+(b) trong LeakProfile.jsx: (a) nudge "Analyze a mix — wins & routine hands too, not just the big losses; a disasters-only profile overstates those leaks" ở thẻ đang tích lũy (1–4 hand); (b) caveat trung thực "Early read from N hands… analyze more for a truer ranking" khi đã mở hồ sơ nhưng <10 hand. BỎ ý "dò lệch theo % kết quả": hand dán từ Coach luôn lưu result:0 (AICoach.jsx:444 không bắt thắng/thua từ text) → không có dữ liệu để dò → làm sẽ là chỉ báo giả. Giữ AICoach empty state sạch để không hại activation (RISK-3). Build pass.',
+    title:'Leak Profile build trên mẫu LỆCH (chỉ hand thua / hand "thú vị")',
+    desc:'<span class="lbl">Rủi ro moat #1.</span> User chủ động dán hand → thường chỉ dán hand thua to hoặc spot khó. leaks.js cộng dồn ĐÚNG những hand đó → "leak đắt nhất" phản ánh cái user CHỊU dán, không phải game thật. App không nhắc dán mẫu đại diện, không cảnh báo khi mẫu lệch. Tay non tin một hồ sơ méo → tới lúc khá lên nhận ra nó lệch → churn. (Trùng khuyến nghị #5 trong rec-player-critique.md — chưa làm.)',
+    files:['utils/leaks.js (cộng dồn mọi hand đã dán, không phân biệt nguồn)','AICoach.jsx (empty state không nhắc dán đa dạng)','LeakProfile.jsx (không cảnh báo n nhỏ / phân bố lệch)'],
+    fix:'Rẻ trước, hiệu quả cao: (a) onboarding/empty state nhắc "dán cả hand thắng & hand bình thường, không chỉ hand thua"; (b) badge "mẫu còn nhỏ / có thể lệch" khi <~10 hand hoặc khi >X% hand cùng 1 loại kết quả; (c) sau này: tag nguồn hand (thua to vs random) để đo & hiệu chỉnh bias. QUYẾT ĐỊNH: làm (a)+(b) ngay — copy nhắc nhở, gần như free, giảm rủi ro niềm tin nhiều nhất.' },
+  { id:'RISK-2', sev:'risk', done:true, status:'DONE', notes:'2026-06-18. (a) số $ mỗi leak giờ làm tròn về bậc $5 (<$100) / $10 (≥$100) + dấu "~" (estDollars) → đọc là ước lượng, không tỏ ra solver-chính-xác; (b) thêm footnote "$ figures are AI estimates based on the real pot/bet sizes — directional, not solver-exact"; (c) bỏ chữ "exact" trong 2 CTA paywall để không overclaim. (c-cache) ĐÃ CÓ SẴN: mỗi hand lưu evImpact vào DB, computeLeaks chỉ cộng số đã lưu — không chạy lại model → cùng hand không đổi số. AICoach đã sẵn nhãn "Estimated EV Impact" (dòng 244). Build pass.',
+    title:'Số $ mỗi leak là AI ƯỚC LƯỢNG — đang hiển thị như con số chính xác',
+    desc:'ev_impact do Gemini ước lượng (có grounding theo pot/bet thật nên đúng hướng) — KHÔNG phải solver. Cộng dồn ra "$X mất vì leak này". Cùng 1 hand chạy lại có thể ra số hơi khác. Tay non không nhận ra; nhưng nếu soi kỹ thấy số nhảy → niềm tin sụt. UI hiện không nói rõ đây là ước lượng.',
+    files:['api/coach.js (ev_impact từ model)','utils/leaks.js (cộng dồn EV)','LeakProfile.jsx (hiển thị $ như số chốt)'],
+    fix:'Tăng độ trung thực, rẻ: (a) gắn nhãn "ước tính" / dùng dấu "~" cho số tiền; (b) làm tròn để không tỏ ra chính xác giả (vd ~$40 thay vì $38.50); (c) cache ev_impact của từng hand → cùng hand không đổi số giữa các lần xem. Không hứa "solver-accurate" ở bất kỳ đâu.' },
+  { id:'RISK-3', sev:'risk', title:'Cần 5 hand mới mở Leak Profile — người siêu lười rớt trước "khoảnh khắc trả tiền"',
+    desc:'Moat (Leak Profile + paywall) chỉ xuất hiện sau khi dán đủ ~5 hand. Nhẹ hơn form card-picker cũ rất nhiều, nhưng tay lười vẫn có thể dán 1–2 hand rồi biến TRƯỚC khi chạm value/paywall. Cần đưa "tín hiệu giá trị sắp tới" lên sớm hơn.',
+    files:['utils/leaks.js (ngưỡng n để recurring/profile)','LeakProfile.jsx (teaser theo n)','AICoach.jsx (empty state)'],
+    fix:'(a) Ngay sau hand ĐẦU TIÊN show progress rõ "1/5 hand → còn 4 hand nữa mở Leak Profile"; (b) cân nhắc hé 1 leak teaser sớm hơn (vd sau 3 hand) để kéo về paywall; (c) đo funnel: % user đạt 5 hand (cần analytics). Một phần cần data thật mới chốt ngưỡng.' },
+  { id:'RISK-4', sev:'risk', title:'Giữ chân sau tháng 1 — mua 1 tháng đọc fix plan rồi huỷ',
+    desc:'Pro mở khóa fix plan khá tĩnh → user có thể trả 1 tháng "lấy đáp án" rồi cancel. "Watch leaks shrink over time" là móc giữ chân DUY NHẤT nhưng còn mỏng: chưa có cơ chế đo & cho thấy leak giảm theo thời gian một cách rõ ràng. Đây là retention dài hạn — không gấp bằng RISK-1/2.',
+    files:['LeakProfile.jsx (FIX_TIPS tĩnh)','utils/leaks.js (chưa so sánh leak theo thời gian)'],
+    fix:'(a) "Leak trend": so tần suất/$ của từng leak kỳ này vs kỳ trước → cho user thấy tiến bộ = lý do trả tiếp; (b) nội dung Pro động (leak mới lộ ra khi trình lên); (c) annual nudge cho ai đã thấy value. Làm sau RISK-1/2/3.' },
 ];
-const SEV_LABEL = {p0:'P0',p1:'P1',p2:'P2',p3:'P3',ok:'OK',feat:'NEW'};
+const SEV_LABEL = {p0:'P0',p1:'P1',p2:'P2',p3:'P3',ok:'OK',feat:'NEW',risk:'RISK'};
 const STATUSES = ['TODO','IN PROGRESS','DONE','WONTFIX'];
 
 let state = JSON.parse(localStorage.getItem(STORE) || '{}');
@@ -246,7 +268,7 @@ function render(){
   const wrap = document.getElementById('items');
   wrap.innerHTML = '';
   let lastSev = '';
-  const sevNames = {p0:'🔴 P0 — Chặn việc thu phí',p1:'🟠 P1 — Niềm tin & độ chính xác',p2:'🟡 P2 — Tăng chuyển đổi',p3:'⚪ P3 — Nice-to-have',feat:'✨ Đã thêm trong session này (mới)',ok:'✅ Đã xem xét — không phải lỗi (giữ nguyên)'};
+  const sevNames = {p0:'🔴 P0 — Chặn việc thu phí',p1:'🟠 P1 — Niềm tin & độ chính xác',p2:'🟡 P2 — Tăng chuyển đổi',p3:'⚪ P3 — Nice-to-have',feat:'✨ Đã thêm trong session này (mới)',ok:'✅ Đã xem xét — không phải lỗi (giữ nguyên)',risk:'⚠️ RISK — Rủi ro moat & giữ chân (cần quyết định)'};
   ITEMS.forEach(it=>{
     const s = get(it.id);
     if(filter!=='all'){
@@ -304,10 +326,10 @@ function bind(){
 }
 
 function renderProgress(){
-  const groups={p0:[],p1:[],p2:[],p3:[]};
-  ITEMS.forEach(it=>groups[it.sev].push(it));
-  const colors={p0:'var(--p0)',p1:'var(--p1)',p2:'var(--p2)',p3:'var(--p3)'};
-  const names={p0:'🔴 P0',p1:'🟠 P1',p2:'🟡 P2',p3:'⚪ P3'};
+  const groups={p0:[],p1:[],p2:[],p3:[],risk:[]};
+  ITEMS.forEach(it=>{ if(groups[it.sev]) groups[it.sev].push(it); });
+  const colors={p0:'var(--p0)',p1:'var(--p1)',p2:'var(--p2)',p3:'var(--p3)',risk:'var(--risk)'};
+  const names={p0:'🔴 P0',p1:'🟠 P1',p2:'🟡 P2',p3:'⚪ P3',risk:'⚠️ RISK'};
   let html='';
   let totalDone=0,total=0;
   Object.keys(groups).forEach(g=>{

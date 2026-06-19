@@ -27,6 +27,15 @@ const FIX_TIPS = {
   no_clear_leak:       'Solid spot — keep doing what you\'re doing here.',
 }
 
+// EV is an AI estimate (grounded in the real pot/bet sizes), not a solver figure.
+// Round to a coarse step so the number reads as an estimate, never solver-precise —
+// and pair it with a "~" everywhere it's shown (RISK-2).
+function estDollars(totalEv) {
+  const a = Math.abs(totalEv)
+  const step = a >= 100 ? 10 : 5
+  return Math.round(a / step) * step
+}
+
 function Empty({ navigate }) {
   return (
     <div style={{ padding:'48px 24px', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', gap:'14px' }}>
@@ -103,6 +112,11 @@ export default function LeakProfile() {
           <div style={{ height:'8px', borderRadius:'4px', background:'rgba(255,255,255,0.06)', overflow:'hidden' }}>
             <div style={{ width:`${Math.min(nAnalyzed/5*100,100)}%`, height:'100%', background:C.primary, transition:'width 0.4s' }} />
           </div>
+          {/* Selection-bias nudge: the profile is only as honest as the hands fed in.
+              Pushing variety here is the cheapest guard against a "disasters-only" sample. */}
+          <div style={{ fontSize:'0.72rem', color:C.textMuted, lineHeight:1.55 }}>
+            Analyze a mix — your wins and routine hands too, not just the big losses. A profile built only from disasters overstates those leaks.
+          </div>
           <button onClick={() => navigate('/coach')} style={{ alignSelf:'flex-start', marginTop:'4px', display:'flex', alignItems:'center', gap:'6px', padding:'9px 14px', borderRadius:'9px', border:'none', background:C.primaryDim, color:C.primary, fontSize:'0.74rem', fontWeight:700, cursor:'pointer' }}>
             <BrainCircuit size={14} /> Analyze more hands
           </button>
@@ -120,6 +134,17 @@ export default function LeakProfile() {
       {/* Revealed */}
       {revealed && !proLoading && (
         <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+          {/* Honesty caveat: the ranking reflects self-selected hands, and a small
+              sample over-weights whatever the user happened to paste. Say so plainly
+              instead of presenting an early read as the whole truth (RISK-1). */}
+          {nAnalyzed < 10 && (
+            <div style={{ padding:'10px 12px', borderRadius:'10px', background:'rgba(146,204,255,0.06)', border:`1px solid rgba(146,204,255,0.18)`, display:'flex', gap:'8px', alignItems:'flex-start' }}>
+              <span style={{ fontSize:'0.7rem', marginTop:'1px' }}>ℹ️</span>
+              <span style={{ fontSize:'0.72rem', color:C.textMuted, lineHeight:1.5 }}>
+                Early read from the {nAnalyzed} hand{nAnalyzed>1?'s':''} you've analyzed. Analyze more — including wins and routine hands — for a truer ranking.
+              </span>
+            </div>
+          )}
           {leaks.map((l, i) => {
             const locked = !isPro && i > 0          // free: only leak #1 visible
             const maskAmt = !isPro                  // free: $ masked everywhere
@@ -134,7 +159,7 @@ export default function LeakProfile() {
                     {l.recurring ? `×${l.count} recurring` : `${l.count} hand`}
                   </span>
                   <span style={{ fontSize:'0.95rem', fontWeight:800, color:C.red, fontVariantNumeric:'tabular-nums', minWidth:'62px', textAlign:'right', display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'3px' }}>
-                    {maskAmt ? <><Lock size={12} color={C.red} />••</> : `-$${Math.abs(Math.round(l.totalEv))}`}
+                    {maskAmt ? <><Lock size={12} color={C.red} />••</> : `~$${estDollars(l.totalEv)}`}
                   </span>
                 </div>
                 {/* Fix plan — Pro only */}
@@ -174,8 +199,8 @@ export default function LeakProfile() {
               <div style={{ fontSize:'0.8rem', color:C.text, lineHeight:1.5, display:'flex', gap:'8px', alignItems:'flex-start' }}>
                 <Lock size={15} color={C.primary} style={{ marginTop:'2px', flexShrink:0 }} />
                 <span>{nRecurring > 0
-                  ? `${nRecurring} recurring leak${nRecurring>1?'s are':' is'} costing you money. Unlock the exact $ amounts, the full ranking, and a fix plan for each.`
-                  : `Unlock the exact $ cost of every leak and a step-by-step fix plan.`}</span>
+                  ? `${nRecurring} recurring leak${nRecurring>1?'s are':' is'} costing you money. Unlock the $ cost of each, the full ranking, and a fix plan.`
+                  : `Unlock the $ cost of every leak and a step-by-step fix plan.`}</span>
               </div>
               <button onClick={() => setShowPaywall(true)} style={{ padding:'11px 16px', borderRadius:'10px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontSize:'0.8rem', fontWeight:800, cursor:'pointer' }}>
                 Unlock full Leak Profile →
@@ -184,6 +209,11 @@ export default function LeakProfile() {
           )}
 
           {error && <div style={{ fontSize:'0.74rem', color:C.red }}>{error}</div>}
+
+          {/* RISK-2: be upfront that $ are AI estimates, not solver output. */}
+          <div style={{ fontSize:'0.66rem', color:C.textMuted, lineHeight:1.5, marginTop:'2px', opacity:0.85 }}>
+            $ figures are AI estimates based on the real pot and bet sizes in each hand — directional, not solver-exact.
+          </div>
         </div>
       )}
 

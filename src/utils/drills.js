@@ -1,8 +1,15 @@
-// GROWTH-3: leak-targeted drills. Each leak_category maps to a generator that
-// produces spots training EXACTLY that decision — closing the loop "Coach finds a
-// leak → drill it → it shrinks". Generators are correct-BY-CONSTRUCTION (we deal a
-// spot, evaluate it with the real handEvaluator, and only emit it when the textbook
-// answer is unambiguous) so the drill never serves a poker-wrong / debatable hand.
+// GROWTH-3: leak-targeted drills. Each leak_category maps to spots training EXACTLY
+// that decision — closing the loop "Coach finds a leak → drill it → it shrinks".
+//
+// Two kinds of content, chosen per leak for quality:
+//  • CURATED banks for the "discipline" leaks (fold/value/bluff). These are the HARD,
+//    instructive spots — folding a hand that FEELS too strong (top two pair on a flush
+//    board vs a passive reg who jams). Each spot bakes in the villain read that makes
+//    the textbook answer correct, so it's both unambiguous and worth practising. A
+//    procedural generator can't encode that read, so we hand-author and vet these.
+//  • PROCEDURAL generators for the "math" leaks (pot odds on a draw, preflop ranges).
+//    These are correct by math / GTO data and aren't obvious (you must calculate or
+//    recall), so generating them is safe and still instructive.
 import { evaluateHeroHand } from './handEvaluator'
 
 const RANKS = ['A','K','Q','J','T','9','8','7','6','5','4','3','2']
@@ -17,8 +24,6 @@ function freshDeck() {
 }
 function shuffle(a) { const x = [...a]; for (let i = x.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[x[i], x[j]] = [x[j], x[i]] } return x }
 function pick(a) { return a[Math.floor(Math.random() * a.length)] }
-
-// Coarse strength class from the handEvaluator label.
 function strengthClass(label) {
   const s = (label || '').toLowerCase()
   if (s.includes('straight flush') || s.includes('royal') || s.includes('four of a kind') || s.includes('full house')) return 'monster'
@@ -27,157 +32,190 @@ function strengthClass(label) {
   if (s.includes('one pair') || s.includes('pocket')) return 'onepair'
   return 'air'
 }
-const VILLAINS = ['a quiet, passive reg', 'a tight reg', 'a typical live reg']
 
-// ── Bluff-catcher discipline ──────────────────────────────────────────────────
-// river/turn_call_too_wide, top/overpair_overplay: hero holds ONE PAIR on a WET
-// board (flush/straight there) and faces a big bet. Vs a live pool that underbluffs
-// big bets, that's a fold. Correct-by-construction: we require a wet board + exactly
-// one pair, so "fold" is the unambiguous disciplined answer (not a coin-flip).
-function genBluffCatcher(variant) {
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const deck = freshDeck()
-    const hero = [deck.pop(), deck.pop()]
-    const nBoard = variant === 'turn' ? 4 : 5
-    const board = []
-    for (let i = 0; i < nBoard; i++) board.push(deck.pop())
-    const ev = evaluateHeroHand(hero, board)
-    if (strengthClass(ev.heroHandStrength) !== 'onepair') continue
-    const wet = ev.boardTexture?.flushPossible || ev.boardTexture?.straightPossible
-    if (!wet) continue
-    // Keep the spot UNAMBIGUOUS: board unpaired (so the only pair is the hero's) and
-    // the pair is MARGINAL (below the top board card — second pair or worse, or a low
-    // pocket pair). Folding that to a big bet on a wet board is textbook, not debatable.
-    const bRanks = board.map(c => RANK_VAL[c.slice(0, -1)])
-    if (new Set(bRanks).size !== bRanks.length) continue
-    const cnt = {}
-    ;[...hero, ...board].forEach(c => { const v = RANK_VAL[c.slice(0, -1)]; cnt[v] = (cnt[v] || 0) + 1 })
-    const pairRank = Math.max(0, ...Object.keys(cnt).filter(v => cnt[v] >= 2).map(Number))
-    if (pairRank >= Math.max(...bRanks)) continue
-    const pot = pick([60, 80, 100, 120])
-    const bet = variant === 'turn' ? Math.round(pot * 0.7) : pot
-    const street = variant === 'turn' ? 'Turn' : 'River'
-    const options = shuffle([
-      { label: 'Fold', value: 'fold' },
-      { label: `Call $${bet}`, value: 'call' },
-      { label: 'Raise', value: 'raise' },
-    ])
-    return {
-      heroCards: hero, boardCards: board,
-      question: `${street}: you have ${ev.heroHandStrength.toLowerCase()} on a wet board. ${cap(pick(VILLAINS))} jams $${bet} into $${pot}. Your move?`,
-      options, answer: 'fold',
-      rationale: `The board has a flush/straight there, and live players rarely fire a big ${street.toLowerCase()} bet as a bluff. One pair beats only bluffs you almost never face — fold. Calling is the leak; raising turns a bluff-catcher into a bluff with no fold equity.`,
-      formula: 'Live pools underbluff big bets → fold marginal bluff-catchers',
-    }
-  }
-  return null
-}
+// Standard option sets (shuffled per-serving in buildDrillQueue).
+const FOLD3 = [{ label:'Fold', value:'fold' }, { label:'Call', value:'call' }, { label:'Raise', value:'raise' }]
+const FOLD2 = [{ label:'Fold', value:'fold' }, { label:'Call', value:'call' }]
+const VALUE = [{ label:'Bet for value', value:'bet' }, { label:'Check back', value:'check' }]
+const BLUFF = [{ label:'Bet (bluff)', value:'bluff' }, { label:'Check / give up', value:'check' }]
+const sp = (h, b, q, o, a, w, f) => ({ heroCards: h, boardCards: b, question: q, options: o, answer: a, rationale: w, formula: f || '' })
 
-// ── Value betting ─────────────────────────────────────────────────────────────
-// passive_play / missed_value: hero has a STRONG made hand (two pair+) on the river,
-// checked to. Betting for value is correct vs calling stations. Checking back leaks
-// value. Correct-by-construction: require two-pair-or-better.
-function genValueBet() {
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const deck = freshDeck()
-    const hero = [deck.pop(), deck.pop()]
-    const board = []
-    for (let i = 0; i < 5; i++) board.push(deck.pop())
-    const ev = evaluateHeroHand(hero, board)
-    const cls = strengthClass(ev.heroHandStrength)
-    if (cls !== 'twopair' && cls !== 'strong' && cls !== 'monster') continue
-    if (!ev.bestFiveCards?.some(c => hero.includes(c))) continue   // hero must contribute (not a board hand)
-    const pot = pick([50, 70, 90, 120])
-    const options = shuffle([
-      { label: `Bet ~70% pot for value`, value: 'bet' },
-      { label: 'Check back', value: 'check' },
-    ])
-    return {
-      heroCards: hero, boardCards: board,
-      question: `River: you have ${ev.heroHandStrength.toLowerCase()}. It checks to you in a $${pot} pot vs ${pick(VILLAINS)}. Action?`,
-      options, answer: 'bet',
-      rationale: `Strong made hand + a pool that calls too much = bet for value. Checking back here is the "missed value / passive" leak — you give up bets a calling station would have paid.`,
-      formula: 'Value bet your strong hands vs callers — thin value adds up',
-    }
-  }
-  return null
-}
+// ── CURATED: discipline folds (river_call_too_wide, top/overpair_overplay) ────
+const BANK_FOLD = [
+  sp(['Qs','Js'], ['Qh','Jd','4h','8h','2c'],
+    '1/3 live. You have Q♠J♠ for top two pair on Q♥J♦4♥8♥2♣ — the flush completed on the turn. A quiet, passive reg check-called the flop, led the turn the moment the third heart hit, then jams $180 into $180. Your move?',
+    FOLD3, 'fold',
+    "His exact line — check-call flop, lead when the flush arrives, jam river — is a made flush almost every time vs a passive reg who never bluffs this big. Top two pair beats only bluffs he doesn't have. Folding the too-strong-to-fold hand IS the skill; calling is the leak, raising sets money on fire.",
+    'Underbluffing reg + big river jam = value → fold even two pair'),
+  sp(['Ad','Kc'], ['Ah','9c','5h','2h','Tc'],
+    'You hold A♦K♣ — top pair, top kicker — on A♥9♣5♥2♥T♣. Three hearts are out. A tight reg who called the flop now jams $150 into $160 on the river. Action?',
+    FOLD3, 'fold',
+    'Top pair top kicker feels unfoldable, but a tight reg jamming a flush board reps the flush or better and rarely bluffs here. You beat only missed draws he usually gives up with. Fold.',
+    'Tight reg jams a flush board → fold even TPTK'),
+  sp(['As','Ad'], ['Kh','Qh','Jh','5c','2d'],
+    'You have A♠A♦ on K♥Q♥J♥5♣2♦ — an overpair, but three hearts and a K-Q-J straight texture. A solid reg bets $120 into $130 on the river. Action?',
+    FOLD3, 'fold',
+    'Aces are an overpair, but this board smashes a caller’s range — flushes, straights, two pair, sets all got there. vs a reg’s big river bet you beat almost nothing. Overplaying the overpair is the leak. Fold.',
+    'Overpair on a board that crushes caller’s range → fold'),
+  sp(['Ks','Qh'], ['Qd','9s','9h','4c','2s'],
+    'You have K♠Q♥ for top pair (queens) on Q♦9♠9♥4♣2♠ — the board is paired (99). A nit who’d been passive suddenly bets $90 into $100 on the river. Action?',
+    FOLD3, 'fold',
+    'A nit waking up with a big bet on a paired board reps a nine (trips/boat) or an overpair — hands that crush your one pair. Paying off is the call-too-wide leak. Fold.',
+    'Nit bets big on a paired board → he has the trips. Fold'),
+  sp(['As','Ks'], ['Kd','Qc','Jh','9s','4c'],
+    'You have A♠K♠ — top pair, top kicker — on K♦Q♣J♥9♠4♣. Any ten makes a straight and two pair/sets are all possible. A reg bets $130 into $140 on the river. Action?',
+    FOLD3, 'fold',
+    'TPTK, but this connected board favours the caller — straights, two pair, sets. A reg’s big river bet here is rarely a bluff; you’re drawing thin to a chop or worse. Fold.',
+    'Big bet on a 4-to-straight board → fold one pair'),
+  sp(['Js','Jc'], ['9h','6h','3h','2d','4c'],
+    'You hold J♠J♣ — an overpair — on 9♥6♥3♥2♦4♣. Three hearts are out. A reg bets $100 into $110 on the river. Action?',
+    FOLD3, 'fold',
+    'Your overpair beats one pair but loses to every flush, and a reg firing big into a flush board reps exactly that. He isn’t bluffing enough to call. Fold the overpair — that discipline is the fix.',
+    'Overpair < any flush on a 3-flush river → fold'),
+]
 
-// ── Bluff discipline ──────────────────────────────────────────────────────────
-// overbluff: hero has AIR (no pair / no draw) on the river, checked to. Vs sticky
-// live callers with no fold equity, giving up is correct. Require 'air' on the river.
-function genBluffDiscipline() {
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const deck = freshDeck()
-    const hero = [deck.pop(), deck.pop()]
-    const board = []
-    for (let i = 0; i < 5; i++) board.push(deck.pop())
-    const ev = evaluateHeroHand(hero, board)
-    if (strengthClass(ev.heroHandStrength) !== 'air') continue
-    const pot = pick([40, 60, 80])
-    const options = shuffle([
-      { label: `Bluff — bet $${Math.round(pot * 0.7)}`, value: 'bluff' },
-      { label: 'Check / give up', value: 'check' },
-    ])
-    return {
-      heroCards: hero, boardCards: board,
-      question: `River: you have ${ev.heroHandStrength.toLowerCase()} — no pair, no draw — in a $${pot} pot vs ${pick(VILLAINS)}. It's checked to you. Action?`,
-      options, answer: 'check',
-      rationale: `Live recs call rivers too wide and rarely fold to a single bet, so a no-equity bluff just burns money. Give up. Bluffing here is the "overbluff" leak — pick bluffs with backup equity instead.`,
-      formula: 'No fold equity vs sticky callers → don\'t bluff pure air',
-    }
-  }
-  return null
-}
+// ── CURATED: turn discipline (turn_call_too_wide) ─────────────────────────────
+const BANK_TURN = [
+  sp(['Ah','Tc'], ['Ks','Td','7h','8h'],
+    'Turn: you have A♥T♣ — second pair (tens) — on K♠T♦7♥8♥. The turn brought flush and straight draws. A TAG who raised the flop now bets $55 into $70. Action?',
+    FOLD2, 'fold',
+    'Second pair with no draw on a turn that just got much wetter is a clean fold vs a TAG’s continued aggression. You’re behind his value and can’t improve to beat it. Peeling here bleeds chips.',
+    'No pair-improving outs + wet turn + TAG barrel → fold'),
+  sp(['Kd','9c'], ['Kh','Qs','7d','2c'],
+    'Turn: you have K♦9♣ — top pair, weak kicker — on K♥Q♠7♦2♣. A TAG bets $60 into $75 after c-betting the flop. Action?',
+    FOLD2, 'fold',
+    'Top pair with a 9 kicker is dominated by the TAG’s value (AK, KQ, sets) and his barrels rep exactly those. With a weak kicker you can’t profitably stack off — fold now rather than pay two more streets.',
+    'Weak kicker, can’t stack off → fold the turn'),
+  sp(['9s','9d'], ['Ah','Kc','6h','4s'],
+    'Turn: you have 9♠9♦ on A♥K♣6♥4♠ — an underpair to the board. A TAG bets $50 into $65 after c-betting. Action?',
+    FOLD2, 'fold',
+    'Your nines beat only a stone bluff, and a TAG double-barrelling an A-K board is rarely bluffing — he has an ace, a king, or better. No draw, no equity to continue. Fold.',
+    'Underpair, no draw, vs two barrels → fold'),
+  sp(['Ad','5d'], ['Qh','9c','4s','Jh'],
+    'Turn: you have A♦5♦ — ace high, no pair, no real draw — on Q♥9♣4♠J♥. A solid reg bets $45 into $60 on the turn. Action?',
+    FOLD2, 'fold',
+    'Floating with ace-high and no draw vs a reg’s turn barrel is spew — ~6 outs at best and no fold equity by just calling. Continuing too wide on the turn is the leak. Give it up.',
+    'Ace-high float, no draw → fold'),
+  sp(['9h','9c'], ['Js','7d','5c','Ts'],
+    'Turn: you have 9♥9♣ on J♠7♦5♣T♠ — a pair below two overcards on a board full of straight draws. A reg bets $55 into $70. Action?',
+    FOLD2, 'fold',
+    'Your nines are behind every jack/ten and many draws have you crushed if they hit. No backup equity, lots of scare cards coming — fold the turn rather than calling to fold the river.',
+    'Pair under overcards + scare cards coming → fold'),
+  sp(['Ah','Qc'], ['Qs','9h','6h','5h'],
+    'Turn: you have A♥Q♣ for top pair on Q♠9♥6♥5♥ — the turn put three hearts out. You bet, and a tight player check-raises to $120. Action?',
+    FOLD2, 'fold',
+    'A tight player’s turn check-raise into a flush board is the flush or a set — your one pair (no heart) is in terrible shape. This is a fold; calling to “see the river” is the turn-call-too-wide leak.',
+    'Tight check-raise on a flush turn → fold one pair'),
+]
 
-// ── Draw + pot odds ───────────────────────────────────────────────────────────
-// draw_chasing: hero has a flush draw (9 outs) or OESD (8 outs) on the flop, facing a
-// bet. Correct-by-MATH: call only when the price beats the draw's equity. We size the
-// bet to make the answer clear (clearly good or clearly bad odds), never borderline.
+// ── CURATED: value betting (missed_value, passive_play) ───────────────────────
+const BANK_VALUE = [
+  sp(['As','Ad'], ['Ts','7c','4d','9h','2s'],
+    'River: you have A♠A♦ — an overpair — on T♠7♣4♦9♥2♠. It checks to you in a $90 pot vs a calling station who pays off light. Action?',
+    VALUE, 'bet',
+    'vs a station who calls with any pair or draw, checking back your overpair leaves money on the table. Bet for value — they call worse constantly. Checking “for safety” is the missed-value leak.',
+    'Strong hand + a station who calls light → value bet'),
+  sp(['Ah','Kd'], ['Kc','9s','5d','2h','7c'],
+    'River: you have A♥K♦ for top pair, top kicker on K♣9♠5♦2♥7♣. It checks to you ($70 pot) vs a fish who calls down with second pair and ace-high. Action?',
+    VALUE, 'bet',
+    'A station calls a bet with worse kings, pairs, even ace-high. Betting for value prints; checking back TPTK on a dry board vs a calling station leaves value behind.',
+    'TPTK vs a station → bet, don’t “pot control”'),
+  sp(['Js','Tc'], ['Jd','Th','6s','3c','8d'],
+    'River: you have J♠T♣ for two pair (jacks and tens) on J♦T♥6♠3♣8♦ vs a calling station. It’s checked to you in an $80 pot. Action?',
+    VALUE, 'bet',
+    'Two pair vs a station is a clear value bet — they call with one pair and worse two pairs. Checking back a strong hand vs someone who pays off is the passive leak. Bet.',
+    'Two pair vs a station → value bet'),
+  sp(['7h','7d'], ['Ks','7c','2d','9h','4s'],
+    'River: you have 7♥7♦ — a set of sevens — on K♠7♣2♦9♥4♠. It checks to you ($100 pot) vs a calling station. Action?',
+    [{ label:'Bet big for value', value:'bet' }, { label:'Check to trap', value:'check' }], 'bet',
+    'vs a station, betting big beats trapping. They call with any king, pair, or draw — checking a set to “trap” a player who already calls is just missed value. Bet for max value.',
+    'Don’t slow-play vs a station → bet your set big'),
+  sp(['Ad','Qc'], ['Qh','8s','5d','3c','Tc'],
+    'River: you have A♦Q♣ for top pair on Q♥8♠5♦3♣T♣ vs a loose-passive fish. It’s checked to you in a $60 pot. Action?',
+    VALUE, 'bet',
+    'A loose-passive fish calls with worse queens, tens, and draws that bricked. Bet for value — checking back top pair good kicker vs a station is the missed-value leak.',
+    'Top pair good kicker vs a fish → thin value bet'),
+  sp(['Ks','Kh'], ['Qc','9d','8c','5s','2h'],
+    'River: you have K♠K♥ — an overpair — on Q♣9♦8♣5♠2♥ vs a calling station. It’s checked to you ($85 pot). Action?',
+    VALUE, 'bet',
+    'Kings beat the queens, pairs, and busted draws a station calls with. Bet for value — checking back an overpair on the river vs someone who calls light leaves money behind.',
+    'Overpair vs a station → value bet, don’t check'),
+]
+
+// ── CURATED: bluff discipline (overbluff) ─────────────────────────────────────
+const BANK_BLUFF = [
+  sp(['7h','6h'], ['As','Kd','Qc','2s','9h'],
+    'River: you have 7♥6♥ — a busted draw, no pair — on A♠K♦Q♣2♠9♥. A calling-station fish checks to you in a $70 pot. Action?',
+    BLUFF, 'check',
+    "A station won't fold an ace, king, queen, or any pair — your bluff just donates. With no showdown value it FEELS like you must bet, but vs a fish, checking and giving up is correct. Bluffing here is the overbluff leak.",
+    'No fold equity vs a station → check, don’t bluff'),
+  sp(['Jc','Tc'], ['8h','7d','5s','3c','2h'],
+    'River: you have J♣T♣ — two overcards, no pair — on 8♥7♦5♠3♣2♥. This low board hammers a caller’s range. A rec checks to you ($60 pot). Action?',
+    BLUFF, 'check',
+    'This board connects with the small pairs and straights a recreational caller floats — they’re not folding. Firing your air into a range full of made hands is the overbluff leak. Check and give up.',
+    'Board favours the caller → don’t bluff into it'),
+  sp(['Ah','5h'], ['Kd','9h','4h','Qs','2c'],
+    'River: you have A♥5♥ — a missed flush draw, ace high — on K♦9♥4♥Q♠2♣. A sticky player checks to you ($80 pot). Action?',
+    BLUFF, 'check',
+    'Ace-high has some showdown value and a sticky player calls your bluff with any pair. Turning ace-high into a bluff vs a station is spew — check it down and sometimes win at showdown.',
+    'Ace-high has showdown value vs a station → check'),
+  sp(['Qh','Jd'], ['Ts','Tc','6h','3s','8d'],
+    'River: you have Q♥J♦ — no pair — on T♠T♣6♥3♠8♦. A calling station checks to you ($55 pot). Action?',
+    BLUFF, 'check',
+    'A station calls with any ten, pair, or even ace-high on a dry paired board. Your queen-high bluff has no fold equity. Check and give up — bluffing the unbluffable is the overbluff leak.',
+    'Station won’t fold → queen-high bluff burns money'),
+  sp(['Ad','Kh'], ['9s','7h','5c','4d','2s'],
+    'River: you have A♦K♥ — ace-king high, no pair — on 9♠7♥5♣4♦2♠ vs a loose-passive fish. It’s checked to you ($50 pot). Action?',
+    BLUFF, 'check',
+    'Ace-king high can win at showdown vs a fish’s busted draws, and he won’t fold his pairs to a bet anyway. Betting only turns a hand that can win into a bluff that can’t. Check it down.',
+    'Don’t bluff away a hand with showdown value'),
+  sp(['9c','8c'], ['Ks','Qd','Jh','2c','3h'],
+    'River: you have 9♣8♣ — a busted straight draw, no pair — on K♠Q♦J♥2♣3♥. A passive reg checks to you ($65 pot). Action?',
+    BLUFF, 'check',
+    'On a K-Q-J board the caller’s range is full of pairs and straights that never fold; your missed gutshot has no fold equity. Pick bluffs with backup equity instead. Firing here is the overbluff leak.',
+    'No fold equity on a connected board → check'),
+]
+
+// ── PROCEDURAL: draw + pot odds (draw_chasing) ────────────────────────────────
+// Correct BY MATH: call only when the price beats the draw's equity. Sized so the
+// answer is clear (clearly good or clearly bad odds), never borderline.
 function genDrawOdds() {
   for (let attempt = 0; attempt < 80; attempt++) {
     const deck = freshDeck()
     const hero = [deck.pop(), deck.pop()]
     const board = [deck.pop(), deck.pop(), deck.pop()]
     if (new Set([...hero, ...board]).size !== 5) continue
-    const suits = [...hero, ...board].map(c => c.slice(-1))
-    const sc = {}; suits.forEach(s => sc[s] = (sc[s] || 0) + 1)
+    const sc = {};[...hero, ...board].map(c => c.slice(-1)).forEach(s => sc[s] = (sc[s] || 0) + 1)
     const heroSuits = hero.map(c => c.slice(-1))
-    const flushDraw = heroSuits.some(s => sc[s] === 4)   // exactly 4 → a draw (not made)
+    const flushDraw = heroSuits.some(s => sc[s] === 4)
     const vals = [...new Set([...hero, ...board].map(c => RANK_VAL[c.slice(0, -1)]))].sort((a, b) => a - b)
     let oesd = false
     for (let i = 0; i <= vals.length - 4; i++) if (vals[i + 3] - vals[i] === 3) { oesd = true; break }
-    const ev = evaluateHeroHand(hero, board)
-    if (strengthClass(ev.heroHandStrength) !== 'air') continue   // a clean draw, not a made pair
+    if (strengthClass(evaluateHeroHand(hero, board).heroHandStrength) !== 'air') continue
     if (!flushDraw && !oesd) continue
     const outs = flushDraw ? 9 : 8
-    const equity = Math.round(outs * 4)   // rule of 4 on the flop (~%)
-    // Choose a pot/bet that makes the decision clear: either a cheap price (call) or
-    // an overpriced one (fold). Pot odds % = bet / (pot + 2*bet).
+    const equity = outs * 4
     const pot = pick([50, 60, 80, 100])
     const goodPrice = Math.random() < 0.5
     const bet = goodPrice ? Math.round(pot * 0.33) : Math.round(pot * 1.1)
     const pricePct = Math.round((bet / (pot + 2 * bet)) * 100)
-    const shouldCall = pricePct < equity - 3   // need equity to beat the price (margin so it's clear)
+    const shouldCall = pricePct < equity - 3
     const drawName = flushDraw ? 'flush draw (9 outs)' : 'open-ended straight draw (8 outs)'
-    const options = shuffle([
-      { label: `Call $${bet}`, value: 'call' },
-      { label: 'Fold', value: 'fold' },
-    ])
     return {
-      heroCards: hero, boardCards: board,
+      heroCards: hero, boardCards: board, tier: 'drill',
       question: `Flop: you have a ${drawName}. Villain bets $${bet} into $${pot}. Pot odds vs your equity — call or fold?`,
-      options, answer: shouldCall ? 'call' : 'fold',
+      options: shuffle([{ label: `Call $${bet}`, value: 'call' }, { label: 'Fold', value: 'fold' }]),
+      answer: shouldCall ? 'call' : 'fold',
       rationale: shouldCall
         ? `You need ~${pricePct}% to call and your draw has ~${equity}%. The price is good — call (mind implied odds too).`
-        : `You need ~${pricePct}% to call but your draw is only ~${equity}%. Overpriced — fold. Chasing here is the "draw chasing" leak.`,
+        : `You need ~${pricePct}% to call but your draw is only ~${equity}%. Overpriced — fold. Chasing here is the draw-chasing leak.`,
       formula: `Call when equity > price: ~${equity}% vs ~${pricePct}%`,
     }
   }
   return null
 }
 
-// ── Preflop ranges (reuses the project's GTO 9-max opening ranges) ─────────────
+// ── PROCEDURAL: preflop ranges (bad_preflop) — correct by GTO 9-max data ───────
 const GTO_RANGES = {
   UTG: ['AA','KK','QQ','JJ','TT','99','AKs','AQs','AJs','KQs','AKo'],
   MP:  ['AA','KK','QQ','JJ','TT','99','88','77','AKs','AQs','AJs','ATs','KQs','KJs','QJs','AKo','AQo','KQo'],
@@ -196,30 +234,27 @@ function genPreflop() {
   const deck = freshDeck()
   const hero = [deck.pop(), deck.pop()]
   const inRange = GTO_RANGES[pos].includes(comboKey(hero))
-  const options = shuffle([
-    { label: 'Open-raise', value: 'open' },
-    { label: 'Fold', value: 'fold' },
-  ])
   return {
-    heroCards: hero, boardCards: [], position: pos,
+    heroCards: hero, boardCards: [], position: pos, tier: 'drill',
     question: `Preflop, folded to you in the ${pos} (100bb, 9-max live full ring). ${comboKey(hero)} — open or fold?`,
-    options, answer: inRange ? 'open' : 'fold',
+    options: shuffle([{ label: 'Open-raise', value: 'open' }, { label: 'Fold', value: 'fold' }]),
+    answer: inRange ? 'open' : 'fold',
     rationale: inRange
       ? `${comboKey(hero)} is a standard ${pos} open at full ring. Opening keeps your range tight and ahead of the field.`
-      : `${comboKey(hero)} is too loose to open from ${pos} at a 9-handed table — fold. Opening it is the "bad preflop" leak (too wide, out of position).`,
+      : `${comboKey(hero)} is too loose to open from ${pos} at a 9-handed table — fold. Opening it is the bad-preflop leak (too wide, out of position).`,
     formula: `${pos} open range (100bb 9-max)`,
   }
 }
 
 // ── Leak → drill mapping ──────────────────────────────────────────────────────
 export const DRILL_META = {
-  river_call_too_wide: { title: 'River Bluff-Catching',  gens: [() => genBluffCatcher('river')] },
-  turn_call_too_wide:  { title: 'Turn Discipline',       gens: [() => genBluffCatcher('turn')] },
-  top_pair_overplay:   { title: 'Top Pair Control',      gens: [() => genBluffCatcher('river')] },
-  overpair_overplay:   { title: 'Overpair Control',      gens: [() => genBluffCatcher('river')] },
-  missed_value:        { title: 'Thin Value',            gens: [genValueBet] },
-  passive_play:        { title: 'Betting for Value',     gens: [genValueBet] },
-  overbluff:           { title: 'Bluff Discipline',      gens: [genBluffDiscipline] },
+  river_call_too_wide: { title: 'River Bluff-Catching', bank: BANK_FOLD },
+  top_pair_overplay:   { title: 'Top Pair Control',     bank: BANK_FOLD },
+  overpair_overplay:   { title: 'Overpair Control',      bank: BANK_FOLD },
+  turn_call_too_wide:  { title: 'Turn Discipline',       bank: BANK_TURN },
+  missed_value:        { title: 'Thin Value',            bank: BANK_VALUE },
+  passive_play:        { title: 'Betting for Value',     bank: BANK_VALUE },
+  overbluff:           { title: 'Bluff Discipline',      bank: BANK_BLUFF },
   draw_chasing:        { title: 'Draw Pot Odds',         gens: [genDrawOdds] },
   bad_preflop:         { title: 'Preflop Ranges',        gens: [genPreflop] },
 }
@@ -227,18 +262,24 @@ export const DRILL_META = {
 export function drillTitle(leak) { return DRILL_META[leak]?.title || 'Leak Drill' }
 export function isDrillable(leak) { return !!DRILL_META[leak] }
 
-// Build a queue of N questions for one leak (all targeting that decision).
+// Build a queue of N questions for one leak. Curated banks are sampled without
+// back-to-back repeats (a full bank of 6 gives a clean no-repeat round); procedural
+// leaks generate fresh each time.
 export function buildDrillQueue(leak, n = 6) {
   const meta = DRILL_META[leak]
   if (!meta) return []
   const out = []
-  let guard = 0
-  while (out.length < n && guard < n * 30) {
-    guard++
-    const q = pick(meta.gens)()
-    if (q) out.push({ ...q, tier: 'drill' })
+  if (meta.bank) {
+    let pool = shuffle(meta.bank)
+    let i = 0
+    while (out.length < n) {
+      if (i >= pool.length) { pool = shuffle(meta.bank); i = 0 }
+      const s = pool[i++]
+      out.push({ ...s, options: shuffle(s.options), tier: 'drill' })
+    }
+    return out
   }
+  let guard = 0
+  while (out.length < n && guard < n * 30) { guard++; const q = pick(meta.gens)(); if (q) out.push(q) }
   return out
 }
-
-function cap(s) { return s ? s[0].toUpperCase() + s.slice(1) : s }

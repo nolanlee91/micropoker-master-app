@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { createHash } from 'node:crypto'
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -171,14 +172,46 @@ export default async function handler(req, res) {
   // Best-effort: if the counter/lookup is unavailable, fail open (don't block a
   // paying user over an infra hiccup).
   const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const CAP_ANON = parseInt(process.env.COACH_CAP_ANON || '5', 10)
-  const CAP_FREE = parseInt(process.env.COACH_CAP_FREE || process.env.COACH_DAILY_CAP || '20', 10)
-  const CAP_PRO  = parseInt(process.env.COACH_CAP_PRO  || '50', 10)
+  const CAP_ANON = parseInt(process.env.COACH_CAP_ANON || '2', 10)
+  const CAP_FREE = parseInt(process.env.COACH_CAP_FREE || process.env.COACH_DAILY_CAP || '8', 10)
+  const CAP_PRO  = parseInt(process.env.COACH_CAP_PRO  || '20', 10)
+  // Per-IP cap targets the ONE real farming vector: rotating throwaway ANONYMOUS
+  // accounts on a single device/IP to re-roll the free Pro demo. Applied to anon
+  // ONLY, so real users behind shared NAT/CGNAT are never throttled.
+  const CAP_IP_ANON = parseInt(process.env.COACH_CAP_IP_ANON || '8', 10)
+  // Global daily circuit breaker across ALL users — the hard "sleep at night"
+  // backstop so a scripted attack can't run the Gemini bill up without bound.
+  // Raise as you grow; set very high to effectively disable.
+  const GLOBAL_CAP  = parseInt(process.env.COACH_GLOBAL_DAILY_CAP || '3000', 10)
   if (SERVICE_ROLE) {
     try {
       const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
 
-      // Pro check mirrors usePro: active/trialing subscription that hasn't expired.
+      // (1) Global circuit breaker — trips before any per-user logic so a flood
+      //     can never reach the model, no matter how many identities it rotates.
+      const { data: gCount, error: gErr } = await admin.rpc('bump_global_usage')
+      if (!gErr && typeof gCount === 'number' && gCount > GLOBAL_CAP) {
+        return res.status(429).json({ error: 'The coach is at capacity right now. Please try again in a little while.' })
+      }
+
+      // (2) Per-IP cap — anonymous only (signed-in users cost real Google accounts
+      //     to farm, and we don't want to punish shared-NAT real users).
+      if (user.is_anonymous) {
+        const fwd = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+        const ip  = fwd || req.socket?.remoteAddress || ''
+        if (ip) {
+          // Store only a salted hash — never the raw IP.
+          const salt   = process.env.COACH_IP_SALT || SUPABASE_URL || 'mpm'
+          const ipHash = createHash('sha256').update(salt + ip).digest('hex')
+          const { data: ipCount, error: ipErr } = await admin.rpc('bump_ip_usage', { p_ip: ipHash })
+          if (!ipErr && typeof ipCount === 'number' && ipCount > CAP_IP_ANON) {
+            return res.status(429).json({ error: "You've hit the free demo limit for this device. Sign in with Google to keep going — it's free." })
+          }
+        }
+      }
+
+      // (3) Per-user tiered cap. Pro check mirrors usePro: active/trialing
+      //     subscription that hasn't expired.
       let isProUser = false
       if (!user.is_anonymous) {
         const { data: sub } = await admin
@@ -406,10 +439,15 @@ ${langGuideDebrief[responseLang] ? '\n' + langGuideDebrief[responseLang] : ''}`
           contents,
           generationConfig: {
             // Both 2.5 models are *thinking* models: reasoning tokens count toward
-            // maxOutputTokens. 2.5-pro (analysis) reasons more deeply, so give it more
-            // headroom or the JSON can truncate mid-field (→ parse fail → raw shown).
-            // Follow-up on flash keeps the smaller ceiling.
-            maxOutputTokens: isAnalysis ? 16384 : 8192,
+            // maxOutputTokens. The visible JSON is small (~300 tokens); the rest of
+            // the ceiling is hidden reasoning. Analysis caps thinking at 8192 (plenty
+            // for board-reading + action reconstruction) and sets maxOutputTokens to
+            // 9000 = thinking budget + a ~700-token buffer for the JSON, so a heavy
+            // hand still can't truncate mid-field, while the pathological cost tail
+            // (was up to 16384 out → ~$0.167/call) is bounded to ~$0.09. Follow-up on
+            // flash is already cheap and keeps dynamic thinking to avoid clipping debriefs.
+            maxOutputTokens: isAnalysis ? 9000 : 8192,
+            ...(isAnalysis ? { thinkingConfig: { thinkingBudget: 8192 } } : {}),
             // Analysis at temp 0 → far less run-to-run drift in the verdict, the
             // reasoning, and the EV number for the same hand (was 0.2 → noticeably
             // different explanations each call). Follow-up keeps a little warmth.
@@ -424,6 +462,11 @@ ${langGuideDebrief[responseLang] ? '\n' + langGuideDebrief[responseLang] : ''}`
 
     const data = await geminiRes.json()
     if (data.error) throw new Error(data.error.message || 'Gemini API error')
+
+    // Real token usage per call — `thinking` is the dominant, runtime-only cost and
+    // the number to watch if tuning thinkingBudget; `output` is the visible JSON.
+    const u = data.usageMetadata || {}
+    console.log('[coach] tokens:', { model, prompt: u.promptTokenCount, thinking: u.thoughtsTokenCount, output: u.candidatesTokenCount, total: u.totalTokenCount })
 
     const raw = data.candidates?.[0]?.content?.parts?.[0]?.text
     if (!raw) throw new Error('Empty response from Gemini')

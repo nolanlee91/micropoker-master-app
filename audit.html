@@ -115,7 +115,7 @@
 <body>
 <header>
   <h1>🔍 MicroPoker Master — Audit</h1>
-  <div class="sub">Góc nhìn người chơi micro-stakes · "Sẵn sàng thu phí chưa?" · Tạo 2026-06-17 · Cập nhật 2026-06-18</div>
+  <div class="sub">Góc nhìn người chơi micro-stakes · "Sẵn sàng thu phí chưa?" · Tạo 2026-06-17 · Cập nhật 2026-06-19</div>
 </header>
 
 <div class="verdict">
@@ -233,6 +233,11 @@ const ITEMS = [
     desc:'Theo phản hồi: (1) tier HARD nông (bluff-candidate binary + range-advantage premise sai logic) → THAY bằng curated hard spots (randomHardSpot lấy ngẫu nhiên từ BANK_FOLD/TURN/VALUE/BLUFF — quyết định live-cash thật, vetted). (2) GỠ paywall sai chiến lược "Upgrade for Unlimited" (DashboardCard) — vốn đã dead code không render. (3) GỠ rối daily/weekly: useDailyProgress rút còn {streak,xp}, bỏ limit theo tuần + TIERS.daily + getWeekKey/TODAY dead. (4) Thêm TEST coverage: mọi leak trong LEAK_LABELS (trừ no_clear_leak) BẮT BUỘC có drill → thêm leak mà quên drill là test fail. 44/44 test pass.',
     files:['utils/drills.js (randomHardSpot)','Quiz.jsx (getAdvancedQ→curated, gỡ DashboardCard + 2 generator nông + daily limit)','utils/drills.test.js (coverage guard)'],
     fix:'Quiz HARD giờ là quyết định live-cash đáng học; quiz FREE không giới hạn (kiếm tiền ở Leak/Debrief). Coverage: 9/9 leak có drill, test chặn gap tương lai.' },
+
+  { id:'COST-1', sev:'feat', done:true, status:'DONE', notes:'2026-06-19. CÒN CHỜ BẠN: chạy db/migration-2-anti-abuse.sql trên Supabase (cho per-IP + global breaker). Env đều optional, default đã baked vào code.', title:'Kiểm soát chi phí Gemini + chống cày multi-acc (3 lever)',
+    desc:'Chi phí/lần gọi: Pro analysis ~$0.033 (typical), flash ~$0.003. Worst-case 100 user max quota cũ (anon5/free20/pro50) ≈ $76/ngày. 3 lever: (1) THINKING BUDGET — gemini-2.5-pro là thinking model, maxOutputTokens 16384 thả nổi reasoning token (phần đắt nhất, ẩn); set thinkingBudget=8192 + maxOutputTokens 16384→9000 (JSON hiện ra chỉ ~300 token, chừa buffer ~700 nên không truncate) → trần xấu nhất/call $0.167→~$0.09, ca thường không đổi. Thêm log usageMetadata (thinking/output token thật) để căn tiếp. (2) HẠ CAP default: anon 5→2, free 20→8, pro 50→20 (đếm TỔNG mọi call). (3) CHỐNG FARM: per-IP cap (CHỈ anon, hash SHA-256 IP, không lưu IP thô — chặn 1 máy quay vòng nhiều acc anon, không phạt user sau NAT/CGNAT) + global daily circuit breaker (429 cứng khi tổng call/ngày > COACH_GLOBAL_DAILY_CAP=3000 — phanh chống script đội hóa đơn).',
+    files:['api/coach.js (thinkingConfig + maxOutputTokens 9000 + token log + cap mới + per-IP + global breaker)','db/migration-2-anti-abuse.sql (mới — bump_ip_usage + bump_global_usage)','.env.example (doc COACH_CAP_* / COACH_CAP_IP_ANON / COACH_GLOBAL_DAILY_CAP)'],
+    fix:'Worst-case mới (free8/pro20) ≈ $30/ngày (~$910/th) so với ~$2,280/th. ⚠️ BIÊN LỜI: 1 Pro cày max 20/ngày ≈ $20/th API > giá Pro $9.99/th → worst-case lỗ ~$10/Pro; usage thật thấp hơn nhiều nên trung bình vẫn lời. Cân nhắc hạ COACH_CAP_PRO nếu lo, hoặc theo dõi log token thật rồi siết thinkingBudget xuống 4096. Build pass, 51/51 test.' },
 
   { id:'OK-1', sev:'ok', title:'Stakes ĐÚNG — định vị LIVE CASH (không phải lỗi)',
     desc:'Ban đầu reviewer giả định "micro = online cents (NL2–NL100)". Nhưng đối tượng là khán giả các kênh YouTube dạy LIVE CASH. Trong live, $1/$1, $1/$2, $1/$3 LÀ stakes thấp nhất (micro/low live) — $1/$2 là bàn entry-level ở hầu hết casino. Vậy STAKES_LIST hiện tại CHUẨN với đối tượng. Không cần sửa.',

@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { NavLink } from 'react-router-dom'
-import { History, Wallet, Calculator, BrainCircuit, Spade, Zap, LogOut, Settings, X, TrendingDown, ClipboardList } from 'lucide-react'
+import { History, Wallet, Calculator, BrainCircuit, Spade, Zap, LogOut, Settings, X, TrendingDown, ClipboardList, CreditCard } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { useLocalStorage } from '../hooks/useLocalStorage'
+import { usePro } from '../hooks/usePro'
+import { openBillingPortal } from '../lib/portal'
 
 const NAV = [
   { path: '/history',  label: 'Journal',  icon: History },
@@ -34,12 +36,26 @@ function getDisplayName(session) {
 
 function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
   const { deleteAccount, session } = useAuth()
+  const { isPro } = usePro()
   const isAnon = !!session?.user?.is_anonymous
   const email  = session?.user?.email || ''
   const [soundEnabled, setSoundEnabled] = useLocalStorage('sound-enabled', true)
   const [confirming, setConfirming] = useState(false)
   const [deleting,   setDeleting]   = useState(false)
   const [delError,   setDelError]   = useState('')
+  const [portalLoading, setPortalLoading] = useState(false)
+  const [portalError,   setPortalError]   = useState('')
+
+  async function handleManageSubscription() {
+    setPortalLoading(true)
+    setPortalError('')
+    try {
+      await openBillingPortal()   // redirects on success
+    } catch (e) {
+      setPortalError(e.message || 'Could not open billing portal.')
+      setPortalLoading(false)
+    }
+  }
 
   async function handleDelete() {
     setDeleting(true)
@@ -93,6 +109,31 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
           {btn('Off', soundEnabled ? 'On' : 'Off', () => setSoundEnabled(false), C.primary)}
         </div>
       </div>
+
+      {/* Subscription — Pro users manage billing on Stripe's hosted portal */}
+      {isPro && !isAnon && (
+        <div style={{ marginTop:'16px', paddingTop:'14px', borderTop:`1px solid ${C.border}` }}>
+          {lbl('Subscription')}
+          <button
+            onClick={handleManageSubscription}
+            disabled={portalLoading}
+            style={{
+              width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'7px',
+              padding:'9px', borderRadius:'8px', border:`1px solid ${C.border}`, background:C.surfaceHigh,
+              color:C.text, fontSize:'0.68rem', fontWeight:600, cursor: portalLoading ? 'not-allowed' : 'pointer',
+              opacity: portalLoading ? 0.6 : 1,
+            }}
+          >
+            <CreditCard size={13} /> {portalLoading ? 'Opening…' : 'Manage subscription'}
+          </button>
+          <div style={{ fontSize:'0.58rem', color:C.textMuted, marginTop:'6px', lineHeight:1.5 }}>
+            Update payment, view invoices, or cancel — on Stripe.
+          </div>
+          {portalError && (
+            <div style={{ fontSize:'0.6rem', color:'#f47067', marginTop:'6px' }}>{portalError}</div>
+          )}
+        </div>
+      )}
 
       {/* Account — who you're signed in as + delete (App Store requirement) */}
       <div style={{ marginTop:'16px', paddingTop:'14px', borderTop:`1px solid ${C.border}` }}>

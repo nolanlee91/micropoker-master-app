@@ -201,10 +201,10 @@ const ITEMS = [
     files:['Paywall.jsx (không claim language)','coach.js (language free)','Layout.jsx (selector free)'],
     fix:'Đã xác minh nhất quán. Demo giữ tiếng Anh (A).' },
 
-  { id:'P3-1', sev:'p3', title:'Odds calc: cho nhập range cho villain',
+  { id:'P3-1', sev:'p3', status:'GÁC LẠI (chủ tự mở khi muốn)', notes:'2026-06-19: gác theo ý chủ. HƯỚNG ĐÃ CHỐT nếu làm: preset Tight/Standard/Loose (~10/25/40% tay mạnh nhất) thay vì lưới 13x13; cần bảng xếp hạng 169 tay + sim sả 1 combo trong range mỗi vòng (file nhạy hiệu năng — không đơn giản hoá ẩu).', title:'Odds calc: cho nhập range cho villain',
     desc:'Equilab cho range villain (không chỉ 2 lá cụ thể / random) — điểm người chơi nghiêm túc mong muốn.',
     files:['OddsCalculator.jsx'],
-    fix:'Hỗ trợ nhập range % cho villain.' },
+    fix:'Hỗ trợ nhập range % cho villain. Khi mở lại: làm bản preset trước (đề xuất).' },
   { id:'P3-2', sev:'p3', done:true, status:'DONE', notes:'2026-06-18. Thêm Vitest + 24 test cho handEvaluator (npm test). Bao: phân loại đủ 9 hạng bài; edge straight (wheel A-2-3-4-5, broadway, K-A-2-3-4 KHÔNG phải sảnh); precedence moat (flush > straight cùng tồn tại, straight-flush > flush, full house từ board pair trong 7 lá); preflop/thiếu lá; board texture (paired/flush/straight/dry); parse (case-insensitive, T=ten, lọc lá rác). 24/24 pass. Build không ảnh hưởng (file .test.js không vào bundle).',
     title:'Hand evaluator: thêm unit test',
     desc:'Vì đây là "deterministic source of truth" cho AI Coach, rất đáng test edge cases (wheel straight, board pair, flush vs straight).',

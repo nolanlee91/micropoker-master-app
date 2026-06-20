@@ -369,7 +369,19 @@ Rules:
   the real amount faced and pot. Example: calling a $250 river jam while beaten ~80%
   of the time costs roughly the amount put in that you don't get back — on the order
   of the bet faced, not a token -$10. Show the number reflects the actual stakes.
-- leak_category must be exactly one value from the list above.
+- leak_category must be exactly one value from the list above. Pick the SINGLE biggest leak, and choose the MOST SPECIFIC category that fits. Definitions:
+  • river_call_too_wide — called a river bet/raise with a marginal hand (2nd pair, weak pair, ace-high) that beats too few value combos for the price; the problem is a too-wide CALLING range (live rivers are underbluffed, so fold more).
+  • turn_call_too_wide — called a turn bet / continued without the equity, price, or implied odds to justify it (floating or peeling too light).
+  • overbluff — bet or raised as a bluff with little/no fold equity (bluffing a station, or into a range that won't fold); wrong bluff spot.
+  • missed_value — had a STRONG made hand and checked or under-bet instead of betting/raising for value; left money on the table (esp. vs calling stations).
+  • passive_play — the core issue is lack of aggression/initiative: checking back, calling instead of raising, not c-betting, no protection bet — with a hand that wanted to be the bettor. Use when no single strong-hand value spot was missed but the line was simply too passive.
+  • bad_preflop — a preflop error: wrong open/call/3-bet/4-bet, bad sizing, or playing a dominated/trouble hand from the wrong position.
+  • overpair_overplay — over-committed (stacked off / called a big bet) with an OVERPAIR that was beaten or up against a range that crushes it.
+  • top_pair_overplay — over-committed with TOP PAIR / top-pair-top-kicker where one pair is no longer strong enough for the action faced.
+  • draw_chasing — called with a draw lacking the pot/implied odds (chasing at a bad price).
+  • no_clear_leak — hero played correctly, or this is advice with no committed action. No leak.
+  DISAMBIGUATION: if the hero over-committed a SPECIFIC strong-ish hand, use overpair_overplay / top_pair_overplay — NOT the generic *_call_too_wide (those are for wide calls with marginal holdings). missed_value = a strong hand not bet for value; passive_play = general lack of aggression. Never invent a leak when mistakeType is "correct".
+  EXAMPLES (leak_category): AA calling a tight reg's river jam on a wet board → overpair_overplay. Nut flush checked back on the turn → missed_value. Check-calling middle pair down with no aggression all hand → passive_play. Calling a $200 river bet with 2nd pair vs a live nit → river_call_too_wide.
 ${langGuide[responseLang] ? '\n' + langGuide[responseLang] : ''}
 ${verifiedHeroHandStrength
   ? `\nVERIFIED HERO HAND (computed by deterministic code — YOU MUST USE THIS EXACT VALUE):

@@ -108,6 +108,12 @@ export default function Paywall({ onClose, onRestore }) {
           Less than one buy-in a month.
         </div>
 
+        {/* Honest quota disclosure — no surprise wall, no bait. Steady free number
+            stated plainly; the bigger first day is framed as a bonus, not the headline. */}
+        <div style={{ fontSize:'0.62rem', color:C.textMuted, textAlign:'center', lineHeight:1.5 }}>
+          Free includes 3 AI analyses/day (8 on your first day). Pro raises this to 20/day, plus everything above.
+        </div>
+
         {/* Trust row — real signals only: Stripe-secured, no lock-in, restorable. */}
         <div style={{ display:'flex', flexDirection:'column', gap:'8px', alignItems:'center', borderTop:`1px solid ${C.border}`, paddingTop:'14px' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'14px', fontSize:'0.64rem', color:C.textMuted }}>

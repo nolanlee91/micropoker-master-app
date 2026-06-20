@@ -44,6 +44,25 @@ export default async function handler(req, res) {
   async function upsertFromSubscription(sub, userIdHint) {
     const userId = userIdHint || sub.metadata?.supabase_user_id
     if (!userId) { console.warn('[webhook] missing supabase_user_id on sub', sub.id); return }
+
+    // Out-of-order guard: the table keeps ONE row per user (PK user_id), so a late
+    // event from an OLD subscription could otherwise clobber the user's CURRENT one.
+    // A new active/trialing subscription always takes over; but a non-active event
+    // (canceled/deleted/etc.) is only allowed to write if it's for the subscription
+    // currently on record — a stale cancel for a different (older) sub is ignored.
+    const incomingActive = ['active', 'trialing'].includes(sub.status)
+    if (!incomingActive) {
+      const { data: cur } = await admin
+        .from('subscriptions')
+        .select('stripe_subscription_id')
+        .eq('user_id', userId)
+        .maybeSingle()
+      if (cur?.stripe_subscription_id && cur.stripe_subscription_id !== sub.id) {
+        console.log('[webhook] ignoring stale', sub.status, 'event for old sub', sub.id, '(current:', cur.stripe_subscription_id + ')')
+        return
+      }
+    }
+
     const item = sub.items?.data?.[0]
     // current_period_end lives on the Subscription in older API versions and on the
     // subscription ITEM in newer ones (2025-03+/dahlia). Read whichever is present.

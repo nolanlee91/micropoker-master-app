@@ -168,7 +168,7 @@ export default function LeakProfile() {
         {isPro && <span style={{ marginLeft:'auto', fontSize:'0.58rem', fontWeight:800, letterSpacing:'0.06em', color:C.primary, background:C.primaryDim, padding:'3px 8px', borderRadius:'6px' }}>PRO</span>}
       </div>
       <p style={{ fontSize:'0.74rem', color:C.textMuted, marginBottom:'18px' }}>
-        The patterns costing you the most money, ranked. {nAnalyzed > 0 ? `Built from ${nAnalyzed} analyzed hand${nAnalyzed>1?'s':''}.` : ''}
+        The leaks costing you the most money, ranked.
       </p>
 
       {nAnalyzed < 1 && <Empty navigate={navigate} />}
@@ -233,7 +233,7 @@ export default function LeakProfile() {
             <div style={{ padding:'10px 12px', borderRadius:'10px', background:'rgba(146,204,255,0.06)', border:`1px solid rgba(146,204,255,0.18)`, display:'flex', gap:'8px', alignItems:'flex-start' }}>
               <span style={{ fontSize:'0.7rem', marginTop:'1px' }}>ℹ️</span>
               <span style={{ fontSize:'0.72rem', color:C.textMuted, lineHeight:1.5 }}>
-                Early read from the {nAnalyzed} hand{nAnalyzed>1?'s':''} you've analyzed. Analyze more — including wins and routine hands — for a truer ranking.
+                Early read from {nAnalyzed} hand{nAnalyzed>1?'s':''} — analyze more (wins and routine hands too) for a truer ranking.
               </span>
             </div>
           )}
@@ -257,69 +257,67 @@ export default function LeakProfile() {
                     {maskAmt ? <><Lock size={12} color={C.red} />••</> : `~$${estDollars(l.totalEv)}`}
                   </span>
                 </div>
-                {/* Fix plan — Pro only */}
+                {/* Actions — fix plan (Pro) + drill side by side; the generated plan
+                    expands full-width below the row so it never crowds the buttons. */}
                 {!locked && (
-                  <>
-                  {isPro ? (
-                    <div style={{ marginTop:'10px', paddingTop:'10px', borderTop:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:'10px' }}>
-                      {/* Quick static tip — instant, always shown */}
+                  <div style={{ marginTop:'10px', paddingTop:'10px', borderTop:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:'10px' }}>
+                    {/* Quick static tip — Pro only, instant */}
+                    {isPro && FIX_TIPS[l.category] && (
                       <div style={{ display:'flex', gap:'8px' }}>
                         <span style={{ fontSize:'0.56rem', fontWeight:800, letterSpacing:'0.08em', color:C.primary, marginTop:'2px' }}>FIX</span>
-                        <span style={{ fontSize:'0.78rem', color:C.text, lineHeight:1.5 }}>{FIX_TIPS[l.category] || ''}</span>
+                        <span style={{ fontSize:'0.78rem', color:C.text, lineHeight:1.5 }}>{FIX_TIPS[l.category]}</span>
                       </div>
+                    )}
 
-                      {/* Personalized plan built from THIS player's hands (GROWTH-1) */}
-                      {plan ? (
-                        <div style={{ display:'flex', flexDirection:'column', gap:'8px', padding:'11px 12px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}` }}>
-                          <button onClick={() => togglePlan(l.category)} style={{ display:'flex', alignItems:'center', gap:'6px', background:'none', border:'none', padding:0, cursor:'pointer', width:'100%' }}>
-                            <Sparkles size={12} color={C.primary} />
-                            <span style={{ fontSize:'0.56rem', fontWeight:800, letterSpacing:'0.08em', color:C.primary }}>YOUR PLAN</span>
-                            <div style={{ flex:1 }} />
-                            {openPlans[l.category]
-                              ? <ChevronUp size={14} color={C.primary} />
-                              : <ChevronDown size={14} color={C.primary} />}
+                    {/* Two primary actions: half + half */}
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+                      {/* Left — personalized fix plan (GROWTH-1) */}
+                      {isPro ? (
+                        plan ? (
+                          <button onClick={() => togglePlan(l.category)} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'9px 10px', borderRadius:'9px', border:`1px solid ${C.primaryBorder}`, background:C.primaryDim, color:C.primary, fontSize:'0.74rem', fontWeight:700, cursor:'pointer' }}>
+                            <Sparkles size={13} /> Your plan {openPlans[l.category] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                           </button>
-                          {openPlans[l.category] && (
-                            <>
-                              {plan.summary && <div style={{ fontSize:'0.78rem', color:C.text, lineHeight:1.5 }}>{plan.summary}</div>}
-                              <ol style={{ margin:0, paddingLeft:'18px', display:'flex', flexDirection:'column', gap:'5px' }}>
-                                {(plan.steps || []).map((s, si) => (
-                                  <li key={si} style={{ fontSize:'0.76rem', color:C.text, lineHeight:1.5 }}>{s}</li>
-                                ))}
-                              </ol>
-                              {plan.drill && (
-                                <div style={{ fontSize:'0.74rem', color:C.secondary, lineHeight:1.5, marginTop:'2px' }}>
-                                  <span style={{ fontWeight:700 }}>Next session: </span>{plan.drill}
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      ) : fixState.loading ? (
-                        <div style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'0.74rem', color:C.textMuted }}>
-                          <div style={{ width:'14px', height:'14px', border:`2px solid ${C.primaryBorder}`, borderTopColor:C.primary, borderRadius:'50%', animation:'lpspin 0.8s linear infinite' }} />
-                          Studying your {l.count} {l.category.replace(/_/g,' ')} hand{l.count>1?'s':''}…
-                        </div>
+                        ) : fixState.loading ? (
+                          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', padding:'9px 10px', borderRadius:'9px', border:`1px solid ${C.border}`, background:C.surfaceHi, fontSize:'0.72rem', color:C.textMuted }}>
+                            <div style={{ width:'14px', height:'14px', border:`2px solid ${C.primaryBorder}`, borderTopColor:C.primary, borderRadius:'50%', animation:'lpspin 0.8s linear infinite' }} />
+                            Studying…
+                          </div>
+                        ) : (
+                          <button onClick={() => genFix(l.category, l.count)} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'9px 10px', borderRadius:'9px', border:`1px solid ${C.primaryBorder}`, background:C.primaryDim, color:C.primary, fontSize:'0.74rem', fontWeight:700, cursor:'pointer' }}>
+                            <Sparkles size={13} /> Build fix plan →
+                          </button>
+                        )
                       ) : (
-                        <button onClick={() => genFix(l.category, l.count)} style={{ alignSelf:'flex-start', display:'flex', alignItems:'center', gap:'6px', padding:'8px 12px', borderRadius:'9px', border:`1px solid ${C.primaryBorder}`, background:C.primaryDim, color:C.primary, fontSize:'0.74rem', fontWeight:700, cursor:'pointer' }}>
-                          <Sparkles size={13} /> Build my fix plan from these {l.count} hand{l.count>1?'s':''} →
+                        <button onClick={() => setShowPaywall(true)} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'9px 10px', borderRadius:'9px', border:`1px solid ${C.border}`, background:C.surfaceHi, color:C.textMuted, fontSize:'0.74rem', fontWeight:600, cursor:'pointer' }}>
+                          <Lock size={12} /> Fix plan
                         </button>
                       )}
-                      {fixState.error && <div style={{ fontSize:'0.72rem', color:C.red }}>{fixState.error}</div>}
+                      {/* Right — targeted drill (GROWTH-3) */}
+                      {isDrillable(l.category) ? (
+                        <button onClick={() => navigate(`/quiz?drill=${l.category}`)} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'9px 10px', borderRadius:'9px', border:`1px solid ${C.border}`, background:C.surfaceHi, color:C.secondary, fontSize:'0.74rem', fontWeight:700, cursor:'pointer' }}>
+                          <Target size={13} /> Drill this leak →
+                        </button>
+                      ) : <div />}
                     </div>
-                  ) : (
-                    <div style={{ marginTop:'10px', paddingTop:'10px', borderTop:`1px solid ${C.border}`, display:'flex', gap:'8px', alignItems:'center', opacity:0.7 }}>
-                      <Lock size={12} color={C.textMuted} />
-                      <span style={{ fontSize:'0.74rem', color:C.textMuted, fontStyle:'italic' }}>Personalized fix plan locked</span>
-                    </div>
-                  )}
-                  {/* GROWTH-3: practice the exact leak with targeted drills */}
-                  {isDrillable(l.category) && (
-                    <button onClick={() => navigate(`/quiz?drill=${l.category}`)} style={{ marginTop:'10px', alignSelf:'flex-start', display:'flex', alignItems:'center', gap:'6px', padding:'8px 12px', borderRadius:'9px', border:`1px solid ${C.border}`, background:C.surfaceHi, color:C.secondary, fontSize:'0.74rem', fontWeight:700, cursor:'pointer' }}>
-                      <Target size={13} /> Drill this leak →
-                    </button>
-                  )}
-                  </>
+
+                    {/* Generated plan — full width, only when expanded */}
+                    {isPro && plan && openPlans[l.category] && (
+                      <div style={{ display:'flex', flexDirection:'column', gap:'8px', padding:'11px 12px', borderRadius:'10px', background:C.primaryDim, border:`1px solid ${C.primaryBorder}` }}>
+                        {plan.summary && <div style={{ fontSize:'0.78rem', color:C.text, lineHeight:1.5 }}>{plan.summary}</div>}
+                        <ol style={{ margin:0, paddingLeft:'18px', display:'flex', flexDirection:'column', gap:'5px' }}>
+                          {(plan.steps || []).map((s, si) => (
+                            <li key={si} style={{ fontSize:'0.76rem', color:C.text, lineHeight:1.5 }}>{s}</li>
+                          ))}
+                        </ol>
+                        {plan.drill && (
+                          <div style={{ fontSize:'0.74rem', color:C.secondary, lineHeight:1.5, marginTop:'2px' }}>
+                            <span style={{ fontWeight:700 }}>Next session: </span>{plan.drill}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {fixState.error && <div style={{ fontSize:'0.72rem', color:C.red }}>{fixState.error}</div>}
+                  </div>
                 )}
               </div>
             )

@@ -344,7 +344,9 @@ function render(){
   ITEMS.forEach(it=>{
     const s = get(it.id);
     if(filter!=='all'){
-      if(filter==='open' && s.done) return;
+      // "Chưa xong" = chưa done VÀ không phải mục đã gác lại (GÁC LẠI / WONTFIX).
+      const parked = /^(GÁC|WONTFIX|PARKED)/i.test(s.status||'');
+      if(filter==='open' && (s.done || parked)) return;
       if(filter!=='open' && filter!==it.sev) return;
     }
     if(it.sev!==lastSev){

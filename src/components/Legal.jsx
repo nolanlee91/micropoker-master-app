@@ -24,7 +24,7 @@ const C = {
 
 function Shell({ title, children }) {
   return (
-    <div style={{ minHeight:'100dvh', background:C.bg, color:C.text, fontFamily:"'Inter',sans-serif" }}>
+    <div style={{ height:'100dvh', overflowY:'auto', WebkitOverflowScrolling:'touch', background:C.bg, color:C.text, fontFamily:"'Inter',sans-serif" }}>
       <div style={{ maxWidth:'720px', margin:'0 auto', padding:'32px 20px 80px' }}>
         <a href="/" style={{ color:C.primary, fontSize:'0.8rem', textDecoration:'none', fontWeight:600 }}>← Back to {APP_NAME}</a>
         <h1 style={{ fontSize:'1.6rem', fontWeight:700, letterSpacing:'-0.02em', margin:'18px 0 6px' }}>{title}</h1>

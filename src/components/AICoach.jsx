@@ -739,6 +739,9 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           data.analysis.boardTexture = handEval.boardTexture.description
         }
         const analysisObj = data.analysis
+        // Signal "user got real value" — gates the install prompt so it never
+        // interrupts the first-60s flow before an actual analysis lands.
+        try { localStorage.setItem('mpm-got-value', '1'); window.dispatchEvent(new Event('mpm:got-value')) } catch {}
         const hand = currentHandRef.current
         // Render instantly with the id we already have (preloaded hand). For a
         // free-text hand the id arrives after the insert, so patch it in then — the
@@ -766,6 +769,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           const recovered = parseAnalysisText(replyText)
           if (recovered) {
             console.log('[coach] Frontend recovered structured analysis from reply fallback')
+            try { localStorage.setItem('mpm-got-value', '1'); window.dispatchEvent(new Event('mpm:got-value')) } catch {}
             const hand = currentHandRef.current
             setMessages(prev => [...prev, { role:'assistant', type:'analysis', content: recovered.summary || '', analysis:recovered, handId: hand?.id || null }])
             if (hand?.id) {

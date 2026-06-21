@@ -159,6 +159,11 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
             <div style={{ fontSize:'0.62rem', color:C.textMuted, lineHeight:1.5 }}>
               This permanently deletes your account and all hands, sessions and data. This cannot be undone.
             </div>
+            {isPro && (
+              <div style={{ fontSize:'0.62rem', color:'#f47067', lineHeight:1.5 }}>
+                Your Pro subscription will be canceled immediately. Remaining subscription time is non-refundable.
+              </div>
+            )}
             <div style={{ display:'flex', gap:'6px' }}>
               <button
                 onClick={() => setConfirming(false)}

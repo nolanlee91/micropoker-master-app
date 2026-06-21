@@ -181,6 +181,13 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
           <div style={{ fontSize:'0.6rem', color:'#f47067', marginTop:'6px' }}>{delError}</div>
         )}
       </div>
+
+      {/* Legal — public policy pages (also required for Stripe / app stores) */}
+      <div style={{ marginTop:'16px', paddingTop:'14px', borderTop:`1px solid ${C.border}`, display:'flex', gap:'16px', flexWrap:'wrap' }}>
+        <a href="/terms"   style={{ fontSize:'0.66rem', color:C.textMuted, textDecoration:'none' }}>Terms</a>
+        <a href="/privacy" style={{ fontSize:'0.66rem', color:C.textMuted, textDecoration:'none' }}>Privacy</a>
+        <a href="/support" style={{ fontSize:'0.66rem', color:C.textMuted, textDecoration:'none' }}>Support</a>
+      </div>
     </div>
   )
 }

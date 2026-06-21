@@ -111,7 +111,7 @@ export function Terms() {
       <p>These Terms are governed by the laws of {GOVERNING_LAW}, without regard to its conflict-of-laws rules.</p>
 
       <H2>Contact</H2>
-      <p>Questions? Email <a href={`mailto:${CONTACT_EMAIL}`} style={{ color:C.primary }}>{CONTACT_EMAIL}</a>.</p>
+      <p>Questions? Email us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color:C.primary }}>{CONTACT_EMAIL}</a></p>
     </Shell>
   )
 }
@@ -175,7 +175,7 @@ export function PrivacyPolicy() {
       <p>We may update this policy; material changes will be reflected by the “Last updated” date above.</p>
 
       <H2>Contact</H2>
-      <p>Questions? Email us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color:C.primary }}>{CONTACT_EMAIL}</a>.</p>
+      <p>Questions? Email us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color:C.primary }}>{CONTACT_EMAIL}</a></p>
     </Shell>
   )
 }

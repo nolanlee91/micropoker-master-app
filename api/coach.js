@@ -236,34 +236,43 @@ export default async function handler(req, res) {
         }
       }
 
-      // (3) Per-user cap.
+      // (3) Per-user cap. Pro check (mirrors usePro: active/trialing sub not expired)
+      //     is shared by the transcribe cap and the analysis cap.
+      let isProUser = false
+      if (!user.is_anonymous) {
+        const { data: sub } = await admin
+          .from('subscriptions')
+          .select('status, current_period_end')
+          .eq('user_id', user.id)
+          .maybeSingle()
+        const activeStatus = !!sub && ['active', 'trialing'].includes(sub.status)
+        const notExpired   = !sub?.current_period_end || new Date(sub.current_period_end) > new Date()
+        isProUser = activeStatus && notExpired
+      }
+
       if (isTranscribe) {
         // Voice transcription (flash, cheap) does NOT count against the analysis cap —
-        // a voice hand should equal a typed hand. But it gets its OWN generous per-user
-        // cap so the audio endpoint can't be spammed to burn the Google budget.
-        const CAP_TRANSCRIBE = parseInt(process.env.COACH_CAP_TRANSCRIBE || '40', 10)
+        // a voice hand should equal a typed hand. It gets its OWN tiered per-user cap
+        // so the audio endpoint can't be spammed to burn the Google budget. Sized to
+        // never block a real user (a Pro analyzes up to 20 hands/day + re-records), not
+        // to upsell. Anon kept lowest (the farming surface).
+        const CAP_T_ANON = parseInt(process.env.COACH_CAP_TRANSCRIBE_ANON || '5', 10)
+        const CAP_T_FREE = parseInt(process.env.COACH_CAP_TRANSCRIBE_FREE || '15', 10)
+        const CAP_T_PRO  = parseInt(process.env.COACH_CAP_TRANSCRIBE_PRO  || '40', 10)
+        const tCap = user.is_anonymous ? CAP_T_ANON : isProUser ? CAP_T_PRO : CAP_T_FREE
         const { data: tCount, error: tErr } = await admin.rpc('bump_transcribe_usage', { p_user: user.id })
-        if (!tErr && typeof tCount === 'number' && tCount > CAP_TRANSCRIBE) {
-          return res.status(429).json({ error: `Voice note limit reached (${CAP_TRANSCRIBE}/day). Come back tomorrow.` })
+        if (!tErr && typeof tCount === 'number' && tCount > tCap) {
+          return res.status(429).json({
+            error: user.is_anonymous
+              ? `Voice note limit reached (${tCap}/day). Sign in with Google for more.`
+              : `Voice note limit reached (${tCap}/day). Come back tomorrow.`,
+          })
         }
       } else {
-        // Tiered analysis cap. Pro check mirrors usePro: active/trialing sub not expired.
-        let isProUser = false
-        if (!user.is_anonymous) {
-          const { data: sub } = await admin
-            .from('subscriptions')
-            .select('status, current_period_end')
-            .eq('user_id', user.id)
-            .maybeSingle()
-          const activeStatus = !!sub && ['active', 'trialing'].includes(sub.status)
-          const notExpired   = !sub?.current_period_end || new Date(sub.current_period_end) > new Date()
-          isProUser = activeStatus && notExpired
-        }
-        // Activation bonus keyed on the user's FIRST day USING the coach (not signup):
-        // a brand-new free user gets a generous first day to be wowed when they start
-        // testing the coach, then settles to the lean steady cap from their 2nd active
-        // day on. "First usage day" = no coach_usage row exists for any prior day
-        // (today's row may already exist from this very request, so we look at < today).
+        // Tiered analysis cap. Activation bonus keyed on the user's FIRST day USING the
+        // coach (not signup): a brand-new free user gets a generous first day, then
+        // settles to the lean steady cap from their 2nd active day on. "First usage day"
+        // = no coach_usage row exists for any prior day (today's row may already exist).
         let freeCap = CAP_FREE
         if (!user.is_anonymous && !isProUser) {
           try {

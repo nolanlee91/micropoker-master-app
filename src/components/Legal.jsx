@@ -111,7 +111,7 @@ export function Terms() {
       <p>These Terms are governed by the laws of {GOVERNING_LAW}, without regard to its conflict-of-laws rules.</p>
 
       <H2>Contact</H2>
-      <p>Questions? Email us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color:C.primary }}>{CONTACT_EMAIL}</a></p>
+      <p>Questions? Email us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color:C.primary, textDecoration:'none', fontWeight:600 }}>{CONTACT_EMAIL}</a></p>
     </Shell>
   )
 }
@@ -175,7 +175,7 @@ export function PrivacyPolicy() {
       <p>We may update this policy; material changes will be reflected by the “Last updated” date above.</p>
 
       <H2>Contact</H2>
-      <p>Questions? Email us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color:C.primary }}>{CONTACT_EMAIL}</a></p>
+      <p>Questions? Email us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color:C.primary, textDecoration:'none', fontWeight:600 }}>{CONTACT_EMAIL}</a></p>
     </Shell>
   )
 }
@@ -187,7 +187,7 @@ export function Support() {
 
       <H2>Contact</H2>
       <p>
-        Email <a href={`mailto:${CONTACT_EMAIL}`} style={{ color:C.primary }}>{CONTACT_EMAIL}</a> and we’ll
+        Email <a href={`mailto:${CONTACT_EMAIL}`} style={{ color:C.primary, textDecoration:'none', fontWeight:600 }}>{CONTACT_EMAIL}</a> and we’ll
         get back to you. Please include your account email and a description of the issue.
       </p>
 

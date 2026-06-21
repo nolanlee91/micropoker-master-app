@@ -125,6 +125,11 @@ export default function Paywall({ onClose, onRestore }) {
               <RotateCcw size={11} /> Restore purchase
             </button>
           )}
+          <div style={{ fontSize:'0.6rem', color:C.textMuted, textAlign:'center', lineHeight:1.5 }}>
+            Auto-renews until canceled · payments non-refundable. By subscribing you agree to our{' '}
+            <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color:C.secondary }}>Terms</a> &amp;{' '}
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color:C.secondary }}>Privacy</a>.
+          </div>
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
-import { PrivacyPolicy, Support } from './components/Legal'
+import { Terms, PrivacyPolicy, Support } from './components/Legal'
 import HandHistory from './components/HandHistory'
 import AICoach from './components/AICoach'
 import OddsCalculator from './components/OddsCalculator'
@@ -18,7 +18,8 @@ export default function App() {
   const { session, showMigrate } = useAuth()
   const { pathname } = useLocation()
 
-  // Public legal/support pages — must be reachable without auth (store requirement)
+  // Public legal/support pages — must be reachable without auth (Stripe + store requirement)
+  if (pathname === '/terms')   return <Terms />
   if (pathname === '/privacy') return <PrivacyPolicy />
   if (pathname === '/support') return <Support />
 

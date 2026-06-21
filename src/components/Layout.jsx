@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { NavLink } from 'react-router-dom'
-import { History, Wallet, Calculator, BrainCircuit, Spade, Zap, LogOut, Settings, X, TrendingDown, ClipboardList, CreditCard } from 'lucide-react'
+import { History, Wallet, Calculator, BrainCircuit, Spade, Zap, LogOut, Settings, X, TrendingDown, ClipboardList, CreditCard, Download, Share } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { usePro } from '../hooks/usePro'
 import { openBillingPortal } from '../lib/portal'
+import { useInstall } from '../lib/pwaInstall'
 
 const NAV = [
   { path: '/history',  label: 'Journal',  icon: History },
@@ -37,6 +38,7 @@ function getDisplayName(session) {
 function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
   const { deleteAccount, session } = useAuth()
   const { isPro } = usePro()
+  const install = useInstall()
   const isAnon = !!session?.user?.is_anonymous
   const email  = session?.user?.email || ''
   const [soundEnabled, setSoundEnabled] = useLocalStorage('sound-enabled', true)
@@ -109,6 +111,30 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
           {btn('Off', soundEnabled ? 'On' : 'Off', () => setSoundEnabled(false), C.primary)}
         </div>
       </div>
+
+      {/* Install app — opt-in only, no banner. Hidden once installed / unsupported. */}
+      {install.show && (
+        <div style={{ marginTop:'14px' }}>
+          {lbl('Install app')}
+          {install.iosSafari ? (
+            <div style={{ fontSize:'0.62rem', color:C.textMuted, lineHeight:1.6, display:'flex', alignItems:'center', gap:'4px', flexWrap:'wrap' }}>
+              Tap <Share size={12} style={{ verticalAlign:'middle' }} /> Share, then
+              <span style={{ color:C.text, fontWeight:600 }}>Add to Home Screen</span>.
+            </div>
+          ) : (
+            <button
+              onClick={() => install.promptInstall()}
+              style={{
+                width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'7px',
+                padding:'9px', borderRadius:'8px', border:`1px solid ${C.border}`, background:'transparent',
+                color:C.text, fontSize:'0.68rem', fontWeight:600, cursor:'pointer',
+              }}
+            >
+              <Download size={13} /> Add to home screen
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Subscription — Pro users manage billing on Stripe's hosted portal */}
       {isPro && !isAnon && (

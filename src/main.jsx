@@ -3,14 +3,13 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
-import InstallPrompt from './components/InstallPrompt'
+import './lib/pwaInstall' // capture beforeinstallprompt early; install lives in Settings
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>
         <App />
-        <InstallPrompt />
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>

@@ -544,7 +544,13 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
         setError("Couldn't catch a hand in that — try again.")
       }
     } catch (e) {
-      setError(e.message || 'Voice transcription failed.')
+      // Voice needs a connection to transcribe — if there's no network, say so plainly
+      // (no offline audio storage; same as any cloud voice feature).
+      const offline = (typeof navigator !== 'undefined' && navigator.onLine === false)
+        || /failed to fetch|networkerror|load failed/i.test(e?.message || '')
+      setError(offline
+        ? 'No connection — voice needs internet to transcribe. Try again when you’re back online.'
+        : (e.message || 'Voice transcription failed.'))
     } finally {
       setTranscribing(false)
     }

@@ -151,8 +151,24 @@ export function AuthProvider({ children }) {
   // Permanently delete the account + all cloud data (App Store requirement).
   // The RPC deletes auth.users → cascades to profiles/sessions/hand_history.
   async function deleteAccount() {
-    const { error } = await supabase.rpc('delete_current_user')
-    if (error) return error
+    // Route through the server endpoint so it can cancel any Stripe subscription
+    // BEFORE wiping the account — deleting the user directly (old delete_current_user
+    // RPC) would leave a live subscription billing the card with no way back in.
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) return new Error('Please sign in again, then try deleting your account.')
+
+    try {
+      const res = await fetch('/api/delete-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) return new Error(data.error || 'Could not delete your account. Please try again.')
+    } catch {
+      return new Error('Could not reach the server to delete your account. Please try again.')
+    }
+
     MIGRATE_KEYS.forEach(k => localStorage.removeItem(k))
     localStorage.removeItem('aicoach-messages')
     localStorage.removeItem(MIGRATION_FLAG)

@@ -111,7 +111,7 @@ export default function Paywall({ onClose, onRestore }) {
         {/* Honest quota disclosure — no surprise wall, no bait. Steady free number
             stated plainly; the bigger first day is framed as a bonus, not the headline. */}
         <div style={{ fontSize:'0.62rem', color:C.textMuted, textAlign:'center', lineHeight:1.5 }}>
-          Free includes 3 AI analyses/day (8 on your first day). Pro raises this to 20/day, plus everything above.
+          Free includes 3 AI requests/day (8 on your first day). Pro raises this to 20/day, plus everything above.
         </div>
 
         {/* Trust row — real signals only: Stripe-secured, no lock-in, restorable. */}

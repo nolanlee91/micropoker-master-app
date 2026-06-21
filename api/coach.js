@@ -209,6 +209,9 @@ export default async function handler(req, res) {
   // backstop so a scripted attack can't run the Gemini bill up without bound.
   // Raise as you grow; set very high to effectively disable.
   const GLOBAL_CAP  = parseInt(process.env.COACH_GLOBAL_DAILY_CAP || '3000', 10)
+  // Hoisted so the Pro-only entitlement gate below can read it AFTER this block.
+  // Stays false unless positively verified → fail closed for Pro-only modes.
+  let isProUser = false
   if (SERVICE_ROLE) {
     try {
       const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
@@ -238,7 +241,6 @@ export default async function handler(req, res) {
 
       // (3) Per-user cap. Pro check (mirrors usePro: active/trialing sub not expired)
       //     is shared by the transcribe cap and the analysis cap.
-      let isProUser = false
       if (!user.is_anonymous) {
         const { data: sub } = await admin
           .from('subscriptions')
@@ -301,6 +303,15 @@ export default async function handler(req, res) {
     } catch (e) {
       console.warn('[coach] usage cap skipped:', e.message)
     }
+  }
+
+  // ── Entitlement: fix plan + session debrief are Pro-only ───────────────────
+  // The frontend gates these, but enforce it here too so the endpoint can't be
+  // called directly by a free/anon user. Fail closed: if Pro couldn't be verified
+  // above (no service role, or a lookup error), isProUser stays false and we deny.
+  // Analysis, follow-up and transcribe stay open to free + anonymous users.
+  if ((isLeakFix || isDebrief) && !isProUser) {
+    return res.status(403).json({ error: 'Fix plans and session debriefs are a Pro feature. Upgrade to unlock them.' })
   }
 
   // ── Build hand context string (for follow-up) ─────────────────────────────

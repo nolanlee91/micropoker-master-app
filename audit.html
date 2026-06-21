@@ -119,13 +119,14 @@
 </header>
 
 <div class="verdict">
-  <div class="verdict-row"><span>Sẽ tải &amp; dùng <b>free</b>?</span><span class="v yes">✅ Có</span></div>
-  <div class="verdict-row"><span>Trả tiền được <b>chưa</b>?</span><span class="v yes">✅ Có — Stripe đã chạy (test mode)</span></div>
-  <div class="verdict-row"><span>Giá Pro</span><span class="v" style="color:var(--accent)">$9.99/th · $83.99/năm</span></div>
-  <div class="verdict-row"><span>Còn lại để thu tiền THẬT</span><span class="v">Bật Stripe <b>Live mode</b> (việc kinh doanh)</span></div>
+  <div class="verdict-row"><span><b>CODE</b> — toàn bộ tính năng + roadmap</span><span class="v yes">✅ XONG (không còn việc code)</span></div>
   <div class="verdict-row"><span>🔴 P0 + 🟠 P1</span><span class="v yes">✅ Hoàn tất</span></div>
-  <div class="verdict-row"><span>⚠️ RISK (rủi ro moat & giữ chân)</span><span class="v yes">✅ 6/6 — RISK-6 đã thêm định nghĩa + few-shot phân loại leak</span></div>
-  <div class="verdict-row"><span>📈 GROWTH (giữ chân / MRR)</span><span class="v yes">✅ 4/4 — fix plan động · debrief · mốc 3-hand · drill nhắm leak</span></div>
+  <div class="verdict-row"><span>⚠️ RISK (moat & giữ chân)</span><span class="v yes">✅ 6/6</span></div>
+  <div class="verdict-row"><span>📈 GROWTH (giữ chân / MRR)</span><span class="v yes">✅ 4/4</span></div>
+  <div class="verdict-row"><span>🗺️ ROAD-1 (Billing→lifecycle→Legal→quota→Voice)</span><span class="v yes">✅ 5/5</span></div>
+  <div class="verdict-row"><span>Giá Pro</span><span class="v" style="color:var(--accent)">$9.99/th · $83.99/năm</span></div>
+  <div class="verdict-row"><span>Thanh toán</span><span class="v yes">✅ Stripe + Billing Portal chạy (sandbox, lifecycle verified)</span></div>
+  <div class="verdict-row"><span style="color:var(--accent)"><b>CÒN LẠI = GIẤY TỜ / KINH DOANH của bạn</b></span><span class="v" style="color:var(--accent)">không phải code — xem mục NEXT-STEPS dưới</span></div>
 </div>
 
 <div class="progress-wrap" id="progress"></div>
@@ -278,6 +279,11 @@ const ITEMS = [
     desc:'Trang Terms (mới) + Privacy (mở rộng) + Support, public không cần login (route /terms /privacy /support — Stripe live + App Store đòi URL công khai). Terms: sub auto-renew, NON-REFUNDABLE, hủy = giữ Pro tới hết kỳ đã trả rồi ngừng gia hạn, disclaimer (AI là hướng dẫn học, không phải lời khuyên tài chính), giới hạn trách nhiệm, governing law. Privacy mở rộng đúng thực tế: Stripe (không lưu thẻ), voice audio gửi Google KHÔNG lưu, anonymous session, đủ sub-processor (Supabase/Google/Stripe/Vercel). Paywall: thêm dòng "auto-renews · non-refundable" + link Terms & Privacy cạnh nút mua.',
     files:['src/components/Legal.jsx (Terms mới + Privacy mở rộng + info thật)','src/App.jsx (route /terms public)','src/components/Paywall.jsx (link Terms/Privacy + non-refundable)'],
     fix:'CÒN 1 CHỖ BẠN ĐIỀN: GOVERNING_LAW trong Legal.jsx (quốc gia/bang luật áp dụng). KHÔNG phải tư vấn pháp lý — nên cho luật sư review trước khi bán public chính thức. Build pass.' },
+
+  { id:'NEXT-1', sev:'feat', done:false, status:'CHỜ BẠN — KHÔNG PHẢI CODE', notes:'2026-06-19. Code đã xong hết; đây là việc cấu hình/giấy tờ/kinh doanh của bạn để lên Live thật.', title:'NEXT-STEPS để lên LIVE (việc của bạn, không cần code)',
+    desc:'(1) GOVERNING LAW: điền 1 dòng trong Legal.jsx theo tỉnh bang Canada bạn ở (vd "the Province of Ontario, Canada") — báo bang là Claude điền hộ. (2) STRIPE LIVE: bật riêng cho live (tách khỏi sandbox) — tạo product/Price live, khóa sk_live, webhook live + signing secret mới, bật Customer Portal ở LIVE, set env live (STRIPE_SECRET_KEY=sk_live, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_MONTHLY/ANNUAL live). Canada được Stripe hỗ trợ → chạy thẳng, KHÔNG cần Paddle. Stripe cần: SIN + tài khoản ngân hàng Canada + ID; KHÔNG cần upload work permit. (3) TÙY: Custom domain Supabase ~$10/th (P2-4) để Google login hiện domain riêng — nên có trước khi marketing/KOL. (4) NÊN: luật sư liếc Terms/Privacy trước khi bán public. (5) TỰ KIỂM: work permit của bạn có cho thu nhập tự doanh không (nhập cư — không phải Stripe).',
+    files:['Legal.jsx (GOVERNING_LAW — 1 dòng)','Stripe Dashboard (live config)','Vercel env (live keys)','Supabase Custom Domain (tùy)'],
+    fix:'Tất cả là config + quyết định kinh doanh, KHÔNG đụng code. Migrations đã chạy hết (anti-abuse v2 + transcribe cap). Mở dialog hỏi Claude bất cứ bước nào khi làm.' },
 
   { id:'OK-1', sev:'ok', title:'Stakes ĐÚNG — định vị LIVE CASH (không phải lỗi)',
     desc:'Ban đầu reviewer giả định "micro = online cents (NL2–NL100)". Nhưng đối tượng là khán giả các kênh YouTube dạy LIVE CASH. Trong live, $1/$1, $1/$2, $1/$3 LÀ stakes thấp nhất (micro/low live) — $1/$2 là bàn entry-level ở hầu hết casino. Vậy STAKES_LIST hiện tại CHUẨN với đối tượng. Không cần sửa.',

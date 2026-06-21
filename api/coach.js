@@ -38,6 +38,8 @@ export default async function handler(req, res) {
     leak_category, leak_hands,
     // session debrief fields
     session_hands, session_label,
+    // voice transcription fields (audio → notation text)
+    audio, audioMime,
   } = req.body
 
   console.log('[coach] received:', { request_type, isHandAnalysis, msgCount: messages?.length })
@@ -51,7 +53,8 @@ export default async function handler(req, res) {
   const isFollowUp = request_type === 'follow_up'
   const isLeakFix  = request_type === 'leak_fix'
   const isDebrief  = request_type === 'session_debrief'
-  const isAnalysis = isHandAnalysis === true && !isFollowUp && !isLeakFix && !isDebrief
+  const isTranscribe = request_type === 'transcribe'
+  const isAnalysis = isHandAnalysis === true && !isFollowUp && !isLeakFix && !isDebrief && !isTranscribe
 
   // Game type & villain read are no longer structured inputs — the model reads them
   // from the hand text. Only language remains a normalised setting.
@@ -142,6 +145,24 @@ export default async function handler(req, res) {
     contents.push({ role: 'user', parts: [{ text: `Session: ${session_label || 'recent session'}\n\nHands I flagged this session:\n${handLines || '(no hand detail available)'}` }] })
   }
 
+  // For voice transcription: the content IS the recorded audio. We ask the model to
+  // transcribe AND normalise spoken cards to notation, so the resulting text flows
+  // through the existing pipeline (extractCardsFromText → evaluateHeroHand) and the
+  // deterministic moat still holds.
+  if (isTranscribe) {
+    if (!audio || typeof audio !== 'string') {
+      return res.status(400).json({ error: 'No audio provided' })
+    }
+    contents.length = 0
+    contents.push({
+      role: 'user',
+      parts: [
+        { text: 'Transcribe the poker hand in this audio.' },
+        { inline_data: { mime_type: audioMime || 'audio/webm', data: audio } },
+      ],
+    })
+  }
+
   // Gemini requires at least one content item
   if (contents.length === 0) {
     return res.status(400).json({ error: 'No message content provided' })
@@ -215,47 +236,58 @@ export default async function handler(req, res) {
         }
       }
 
-      // (3) Per-user tiered cap. Pro check mirrors usePro: active/trialing
-      //     subscription that hasn't expired.
-      let isProUser = false
-      if (!user.is_anonymous) {
-        const { data: sub } = await admin
-          .from('subscriptions')
-          .select('status, current_period_end')
-          .eq('user_id', user.id)
-          .maybeSingle()
-        const activeStatus = !!sub && ['active', 'trialing'].includes(sub.status)
-        const notExpired   = !sub?.current_period_end || new Date(sub.current_period_end) > new Date()
-        isProUser = activeStatus && notExpired
-      }
-      // Activation bonus keyed on the user's FIRST day USING the coach (not signup):
-      // a brand-new free user gets a generous first day to be wowed when they start
-      // testing the coach, then settles to the lean steady cap from their 2nd active
-      // day on. "First usage day" = no coach_usage row exists for any prior day
-      // (today's row may already exist from this very request, so we look at < today).
-      let freeCap = CAP_FREE
-      if (!user.is_anonymous && !isProUser) {
-        try {
-          const todayUTC = new Date().toISOString().slice(0, 10)
-          const { data: prior } = await admin
-            .from('coach_usage')
-            .select('day')
+      // (3) Per-user cap.
+      if (isTranscribe) {
+        // Voice transcription (flash, cheap) does NOT count against the analysis cap —
+        // a voice hand should equal a typed hand. But it gets its OWN generous per-user
+        // cap so the audio endpoint can't be spammed to burn the Google budget.
+        const CAP_TRANSCRIBE = parseInt(process.env.COACH_CAP_TRANSCRIBE || '40', 10)
+        const { data: tCount, error: tErr } = await admin.rpc('bump_transcribe_usage', { p_user: user.id })
+        if (!tErr && typeof tCount === 'number' && tCount > CAP_TRANSCRIBE) {
+          return res.status(429).json({ error: `Voice note limit reached (${CAP_TRANSCRIBE}/day). Come back tomorrow.` })
+        }
+      } else {
+        // Tiered analysis cap. Pro check mirrors usePro: active/trialing sub not expired.
+        let isProUser = false
+        if (!user.is_anonymous) {
+          const { data: sub } = await admin
+            .from('subscriptions')
+            .select('status, current_period_end')
             .eq('user_id', user.id)
-            .lt('day', todayUTC)
-            .limit(1)
-          if (!prior || prior.length === 0) freeCap = CAP_FREE_DAY1
-        } catch {}
-      }
-      const cap = user.is_anonymous ? CAP_ANON : isProUser ? CAP_PRO : freeCap
+            .maybeSingle()
+          const activeStatus = !!sub && ['active', 'trialing'].includes(sub.status)
+          const notExpired   = !sub?.current_period_end || new Date(sub.current_period_end) > new Date()
+          isProUser = activeStatus && notExpired
+        }
+        // Activation bonus keyed on the user's FIRST day USING the coach (not signup):
+        // a brand-new free user gets a generous first day to be wowed when they start
+        // testing the coach, then settles to the lean steady cap from their 2nd active
+        // day on. "First usage day" = no coach_usage row exists for any prior day
+        // (today's row may already exist from this very request, so we look at < today).
+        let freeCap = CAP_FREE
+        if (!user.is_anonymous && !isProUser) {
+          try {
+            const todayUTC = new Date().toISOString().slice(0, 10)
+            const { data: prior } = await admin
+              .from('coach_usage')
+              .select('day')
+              .eq('user_id', user.id)
+              .lt('day', todayUTC)
+              .limit(1)
+            if (!prior || prior.length === 0) freeCap = CAP_FREE_DAY1
+          } catch {}
+        }
+        const cap = user.is_anonymous ? CAP_ANON : isProUser ? CAP_PRO : freeCap
 
-      const { data: count, error: capErr } = await admin.rpc('bump_coach_usage', { p_user: user.id })
-      if (!capErr && typeof count === 'number' && count > cap) {
-        // "requests" not "hands": the cap counts every AI call (analysis + follow-up
-        // + fix plan + debrief), so a user can hit it without analyzing that many hands.
-        const msg = user.is_anonymous
-          ? `You've used your ${cap} free AI requests for today. Sign in with Google to keep going — it's free.`
-          : `Daily limit reached (${cap} AI requests). Come back tomorrow — this keeps the AI fast for everyone.`
-        return res.status(429).json({ error: msg })
+        const { data: count, error: capErr } = await admin.rpc('bump_coach_usage', { p_user: user.id })
+        if (!capErr && typeof count === 'number' && count > cap) {
+          // "requests" not "hands": the cap counts every AI call (analysis + follow-up
+          // + fix plan + debrief), so a user can hit it without analyzing that many hands.
+          const msg = user.is_anonymous
+            ? `You've used your ${cap} free AI requests for today. Sign in with Google to keep going — it's free.`
+            : `Daily limit reached (${cap} AI requests). Come back tomorrow — this keeps the AI fast for everyone.`
+          return res.status(429).json({ error: msg })
+        }
       }
     } catch (e) {
       console.warn('[coach] usage cap skipped:', e.message)
@@ -455,9 +487,21 @@ Rules:
 - "mental" must be an empty string if nothing in the hands points to tilt or mindset.
 ${langGuideDebrief[responseLang] ? '\n' + langGuideDebrief[responseLang] : ''}`
 
-  const systemText = isAnalysis ? analysisSystemText
-                   : isLeakFix  ? leakFixSystemText
-                   : isDebrief  ? debriefSystemText
+  const transcribeSystemText = `You transcribe a SPOKEN poker hand into clean text for later analysis. You are a transcriber, not a coach.
+
+Rules:
+- Transcribe what the speaker says: their cards, position, effective stack, bet sizes, street-by-street action, and any villain read.
+- CONVERT every spoken card mention to standard notation — rank letter + suit letter. Ranks: A K Q J T 9 8 7 6 5 4 3 2 (ten = T). Suits: s h d c. Examples: "ace of spades" -> As, "king of hearts" -> Kh, "ten of clubs" -> Tc, "pocket queens" -> "QQ", "ace king suited" -> "AKs", "nine eight off" -> "98o".
+- Keep dollar amounts and positions (BTN, CO, HJ, UTG, SB, BB) as spoken.
+- Do NOT analyze, judge, or give advice. Only transcribe and normalise the cards. If the audio has no poker hand, return an empty transcript.
+
+CRITICAL: Return ONLY a JSON object. No markdown, no code fences, no backticks:
+{ "transcript": "the hand as one readable line, cards in notation" }`
+
+  const systemText = isAnalysis   ? analysisSystemText
+                   : isTranscribe ? transcribeSystemText
+                   : isLeakFix    ? leakFixSystemText
+                   : isDebrief    ? debriefSystemText
                    : followUpSystemText
 
   // The structured hand analysis is the paid product, so it gets the stronger
@@ -488,7 +532,7 @@ ${langGuideDebrief[responseLang] ? '\n' + langGuideDebrief[responseLang] : ''}`
             // Analysis at temp 0 → far less run-to-run drift in the verdict, the
             // reasoning, and the EV number for the same hand (was 0.2 → noticeably
             // different explanations each call). Follow-up keeps a little warmth.
-            temperature: isAnalysis ? 0 : 0.3,
+            temperature: (isAnalysis || isTranscribe) ? 0 : 0.3,
             // Force clean JSON (no markdown fences / prose) so extractJSON parses
             // reliably. Both analysis and follow-up paths expect JSON.
             responseMimeType: 'application/json',
@@ -509,6 +553,13 @@ ${langGuideDebrief[responseLang] ? '\n' + langGuideDebrief[responseLang] : ''}`
     if (!raw) throw new Error('Empty response from Gemini')
 
     console.log('[coach] raw response (200):', raw.slice(0, 200))
+
+    // ── Voice transcription ───────────────────────────────────────────────────
+    if (isTranscribe) {
+      const parsed = extractJSON(raw)
+      const transcript = parsed && typeof parsed.transcript === 'string' ? parsed.transcript : raw
+      return res.status(200).json({ type: 'transcript', transcript: transcript.trim() })
+    }
 
     // ── Initial analysis ────────────────────────────────────────────────────
     if (isAnalysis) {

@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BrainCircuit, Send, Plus, AlertCircle, CheckCircle, ChevronDown, ChevronUp, ChevronRight, TrendingDown } from 'lucide-react'
+import { BrainCircuit, Send, Plus, AlertCircle, CheckCircle, ChevronDown, ChevronUp, ChevronRight, TrendingDown, Mic, Square } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useData } from '../context/DataContext'
 import { evaluateHeroHand } from '../utils/handEvaluator'
 import { computeLeaks, analyzedCount, LEAK_LABELS } from '../utils/leaks'
 import { supabase } from '../lib/supabase'
+import { startRecording, transcribeAudio, isRecordingSupported } from '../lib/voice'
 
 const C = {
   bg:          '#0B0E14',
@@ -507,6 +508,12 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   // Deterministic "instant read" shown WHILE Gemini thinks — fills latency and
   // proves we parsed the cards right (the correctness moat) before the LLM returns.
   const [instantRead, setInstantRead] = useState(null)
+  // Voice capture: speak a hand → flash transcribes to notation → fills the composer
+  // for the user to verify/edit before analyzing (the moat pipeline runs on the text).
+  const [recording,    setRecording]    = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const recorderRef   = useRef(null)
+  const maxStopRef    = useRef(null)
   const bottomRef     = useRef(null)
   const inputRef      = useRef(null)
   // Ref always reflects the latest loadedHand — avoids stale closures in async callbacks
@@ -515,6 +522,47 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
   // Holds the extracted cards + raw text of a free-text hand being analyzed, so we
   // can persist it (→ leak profile) once the analysis returns.
   const pendingFreeHandRef = useRef(null)
+
+  // ── Voice capture ──────────────────────────────────────────────────────────
+  // Recording is keyed off recorderRef (not the `recording` state) so the auto-stop
+  // timer never races a stale closure. Online path only (Stage 1); offline queue later.
+  const MAX_REC_MS = 90000  // hard cap so the upload stays small + mic can't be left on
+  const stopAndTranscribe = useCallback(async () => {
+    const rec = recorderRef.current
+    recorderRef.current = null
+    clearTimeout(maxStopRef.current)
+    setRecording(false)
+    if (!rec) return
+    try {
+      setTranscribing(true)
+      const { blob, mime } = await rec.stop()
+      const text = await transcribeAudio(blob, mime)
+      if (text) {
+        setInput(prev => (prev ? prev.trim() + ' ' + text : text))  // verify/edit before send
+        inputRef.current?.focus()
+      } else {
+        setError("Couldn't catch a hand in that — try again.")
+      }
+    } catch (e) {
+      setError(e.message || 'Voice transcription failed.')
+    } finally {
+      setTranscribing(false)
+    }
+  }, [])
+
+  const handleMic = useCallback(async () => {
+    if (loading || transcribing) return
+    if (recorderRef.current) { stopAndTranscribe(); return }  // already recording → stop
+    setError('')
+    try {
+      const rec = await startRecording()
+      recorderRef.current = rec
+      setRecording(true)
+      maxStopRef.current = setTimeout(() => { stopAndTranscribe() }, MAX_REC_MS)
+    } catch {
+      setError('Mic unavailable — allow microphone access to speak your hand.')
+    }
+  }, [loading, transcribing, stopAndTranscribe])
 
   // Save a free-text-analyzed hand into the user's hand store so it feeds the Leak
   // Profile. Only the AI fields + extracted cards are kept (no manual logging UI).
@@ -1069,6 +1117,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
       {/* Free-text input. Villain type is no longer a selector — just describe the
           villain in the story ("vs a nit who never bluffs") and the model uses it. */}
       <div style={{ padding:'12px 16px', background:C.surface, borderTop:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:'8px', flexShrink:0 }}>
+        <style>{`@keyframes micspin{to{transform:rotate(360deg)}}`}</style>
         <div style={{ display:'flex', gap:'8px', alignItems:'flex-end' }}>
           <textarea
             ref={inputRef}
@@ -1076,13 +1125,33 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKey}
             placeholder={
-              loadedHand ? 'Ask a follow-up question…'
+              recording ? 'Recording… tap ◼ to stop'
+              : transcribing ? 'Transcribing your hand…'
+              : loadedHand ? 'Ask a follow-up question…'
               : messages.length > 0 ? 'Ask a follow-up — or paste a new hand'
-              : 'Paste a hand… (Enter to send)'
+              : 'Paste a hand — or tap 🎤 and speak it'
             }
             rows={2}
             style={{ flex:1, minHeight:'52px', maxHeight:'200px', padding:'10px 12px', background:C.surfaceHigh, border:`1px solid ${C.border}`, borderRadius:'10px', color:C.text, fontSize:'0.875rem', resize:'none', outline:'none', overflowY:'auto', fontFamily:"'Inter',sans-serif", lineHeight:1.6, colorScheme:'dark' }}
           />
+          {isRecordingSupported() && (
+            <button
+              onClick={handleMic}
+              disabled={loading || transcribing}
+              title={recording ? 'Stop & transcribe' : 'Speak your hand'}
+              style={{
+                width:'44px', height:'44px', borderRadius:'10px', border:'none', flexShrink:0,
+                background: recording ? C.redDim : C.surfaceHigh,
+                color: recording ? C.red : (transcribing ? C.textMuted : C.secondary),
+                cursor: (loading || transcribing) ? 'not-allowed' : 'pointer',
+                display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s',
+              }}
+            >
+              {transcribing
+                ? <div style={{ width:'16px', height:'16px', border:`2px solid ${C.border}`, borderTopColor:C.secondary, borderRadius:'50%', animation:'micspin 0.8s linear infinite' }} />
+                : recording ? <Square size={14} /> : <Mic size={16} />}
+            </button>
+          )}
           <button
             onClick={handleSend}
             disabled={!input.trim() || loading}

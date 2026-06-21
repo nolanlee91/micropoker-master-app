@@ -463,6 +463,10 @@ export default function Layout({ children }) {
           style={{
             flex:1, overflowY:'auto', paddingBottom: mobile ? '68px' : '0',
             position:'relative',
+            // Column flex so a full-height page (AICoach: height:100%) actually fills
+            // the scroll area instead of collapsing to content height (which left a
+            // dead black gap under the composer on mobile).
+            display:'flex', flexDirection:'column',
             // Stop the browser's own pull-to-refresh (Chrome Android reloads the
             // whole page) so only OUR gesture runs.
             overscrollBehaviorY: mobile ? 'contain' : 'auto',
@@ -481,6 +485,9 @@ export default function Layout({ children }) {
             </div>
           )}
           <div style={{
+            // grow to fill the scroll area (so height:100% pages fill); never shrink
+            // below content height (so long pages still scroll normally).
+            flex:'1 0 auto',
             transform: pull ? `translateY(${pull}px)` : 'none',
             transition: ptr.current.active ? 'none' : 'transform 0.25s ease',
           }}>

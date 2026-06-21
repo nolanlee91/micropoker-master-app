@@ -36,11 +36,20 @@ function getDisplayName(session) {
 }
 
 function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
-  const { deleteAccount, session } = useAuth()
+  const { deleteAccount, session, linkGoogle, signOut } = useAuth()
   const { isPro } = usePro()
   const install = useInstall()
   const isAnon = !!session?.user?.is_anonymous
   const email  = session?.user?.email || ''
+  const [linking, setLinking] = useState(false)
+  const [linkErr, setLinkErr] = useState('')
+
+  async function handleCreateAccount() {
+    setLinking(true); setLinkErr('')
+    const { error } = await linkGoogle()   // links anon → Google, keeps the leak profile
+    if (error) { setLinkErr(error.message || 'Could not connect. Try “Log in” instead.'); setLinking(false) }
+    // on success the browser redirects to Google and back
+  }
   const [soundEnabled, setSoundEnabled] = useLocalStorage('sound-enabled', true)
   const [confirming, setConfirming] = useState(false)
   const [deleting,   setDeleting]   = useState(false)
@@ -164,10 +173,36 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
       {/* Account — who you're signed in as + delete (App Store requirement) */}
       <div style={{ marginTop:'16px', paddingTop:'14px', borderTop:`1px solid ${C.border}` }}>
         {lbl('Account')}
+        {isAnon ? (
+          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+            <div style={{ fontSize:'0.66rem', color:C.textMuted, lineHeight:1.5 }}>
+              You're a guest — your leak profile is saved on this device only.
+            </div>
+            <button
+              onClick={handleCreateAccount}
+              disabled={linking}
+              style={{
+                width:'100%', padding:'9px', borderRadius:'8px', border:'none',
+                background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e',
+                fontSize:'0.7rem', fontWeight:800, cursor: linking ? 'not-allowed' : 'pointer', opacity: linking ? 0.7 : 1,
+              }}
+            >
+              {linking ? 'Connecting…' : 'Create free account'}
+            </button>
+            <button
+              onClick={signOut}
+              style={{
+                width:'100%', padding:'8px', borderRadius:'8px', border:`1px solid ${C.border}`,
+                background:'transparent', color:C.textMuted, fontSize:'0.66rem', fontWeight:600, cursor:'pointer',
+              }}
+            >
+              Already have an account? Log in
+            </button>
+            {linkErr && <div style={{ fontSize:'0.6rem', color:'#f47067' }}>{linkErr}</div>}
+          </div>
+        ) : (<>
         <div style={{ fontSize:'0.66rem', color:C.textMuted, marginBottom:'10px', wordBreak:'break-all', lineHeight:1.5 }}>
-          {isAnon
-            ? 'Guest — your leak profile is saved on this device. Create an account to keep it across devices.'
-            : (email ? <>Signed in as <span style={{ color:C.text }}>{email}</span></> : 'Signed in')}
+          {email ? <>Signed in as <span style={{ color:C.text }}>{email}</span></> : 'Signed in'}
         </div>
         {!confirming ? (
           <button
@@ -211,6 +246,7 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
         {delError && (
           <div style={{ fontSize:'0.6rem', color:'#f47067', marginTop:'6px' }}>{delError}</div>
         )}
+        </>)}
       </div>
 
       {/* Legal — public policy pages (also required for Stripe / app stores) */}
@@ -252,6 +288,7 @@ export default function Layout({ children }) {
   const { session, signOut } = useAuth()
   const { refetch } = useData()
   const displayName = getDisplayName(session)
+  const isAnon = !!session?.user?.is_anonymous
   const [mobile, setMobile] = useState(window.innerWidth < 768)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [language, setLanguage] = useLocalStorage('aicoach-language', 'English')
@@ -403,15 +440,25 @@ export default function Layout({ children }) {
                 </div>
               </div>
               {settingsTrigger}
-              <button
-                onClick={signOut}
-                title="Log out"
-                style={{ background:'none', border:'none', color:C.textMuted, cursor:'pointer', display:'flex', alignItems:'center', padding:'4px', borderRadius:'4px', flexShrink:0, transition:'color 0.15s' }}
-                onMouseOver={e => e.currentTarget.style.color = '#f47067'}
-                onMouseOut={e  => e.currentTarget.style.color = C.textMuted}
-              >
-                <LogOut size={13} />
-              </button>
+              {isAnon ? (
+                <button
+                  onClick={() => setSettingsOpen(true)}
+                  title="Sign in or create an account"
+                  style={{ background:'rgba(84,233,138,0.12)', border:'1px solid rgba(84,233,138,0.3)', color:C.primary, cursor:'pointer', fontSize:'0.66rem', fontWeight:700, padding:'5px 10px', borderRadius:'6px', flexShrink:0, whiteSpace:'nowrap' }}
+                >
+                  Sign in
+                </button>
+              ) : (
+                <button
+                  onClick={signOut}
+                  title="Log out"
+                  style={{ background:'none', border:'none', color:C.textMuted, cursor:'pointer', display:'flex', alignItems:'center', padding:'4px', borderRadius:'4px', flexShrink:0, transition:'color 0.15s' }}
+                  onMouseOver={e => e.currentTarget.style.color = '#f47067'}
+                  onMouseOut={e  => e.currentTarget.style.color = C.textMuted}
+                >
+                  <LogOut size={13} />
+                </button>
+              )}
             </div>
           </div>
         </aside>
@@ -432,13 +479,23 @@ export default function Layout({ children }) {
             <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
               <span style={{ fontSize:'0.7rem', color:C.textMuted }}>Hi, {displayName}</span>
               {settingsTrigger}
-              <button
-                onClick={signOut}
-                title="Log out"
-                style={{ background:'none', border:'none', color:C.textMuted, cursor:'pointer', display:'flex', alignItems:'center', padding:'4px' }}
-              >
-                <LogOut size={14} />
-              </button>
+              {isAnon ? (
+                <button
+                  onClick={() => setSettingsOpen(true)}
+                  title="Sign in or create an account"
+                  style={{ background:'rgba(84,233,138,0.12)', border:'1px solid rgba(84,233,138,0.3)', color:C.primary, cursor:'pointer', fontSize:'0.66rem', fontWeight:700, padding:'5px 10px', borderRadius:'6px', whiteSpace:'nowrap' }}
+                >
+                  Sign in
+                </button>
+              ) : (
+                <button
+                  onClick={signOut}
+                  title="Log out"
+                  style={{ background:'none', border:'none', color:C.textMuted, cursor:'pointer', display:'flex', alignItems:'center', padding:'4px' }}
+                >
+                  <LogOut size={14} />
+                </button>
+              )}
             </div>
 
             {/* Mobile settings panel — drops below top bar */}

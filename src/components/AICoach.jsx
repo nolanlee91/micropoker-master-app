@@ -1118,7 +1118,7 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
           villain in the story ("vs a nit who never bluffs") and the model uses it. */}
       <div style={{ padding:'12px 16px', background:C.surface, borderTop:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:'8px', flexShrink:0 }}>
         <style>{`@keyframes micspin{to{transform:rotate(360deg)}}`}</style>
-        <div style={{ display:'flex', gap:'8px', alignItems:'flex-end' }}>
+        <div style={{ display:'flex', gap:'8px', alignItems:'stretch' }}>
           <textarea
             ref={inputRef}
             value={input}
@@ -1131,40 +1131,44 @@ export default function AICoach({ preloadedHand, onHandConsumed }) {
               : messages.length > 0 ? 'Ask a follow-up — or paste a new hand'
               : 'Paste a hand — or tap 🎤 and speak it'
             }
-            rows={2}
-            style={{ flex:1, minHeight:'52px', maxHeight:'200px', padding:'10px 12px', background:C.surfaceHigh, border:`1px solid ${C.border}`, borderRadius:'10px', color:C.text, fontSize:'0.875rem', resize:'none', outline:'none', overflowY:'auto', fontFamily:"'Inter',sans-serif", lineHeight:1.6, colorScheme:'dark' }}
+            rows={3}
+            style={{ flex:1, minHeight:'96px', maxHeight:'220px', padding:'12px 14px', background:C.surfaceHigh, border:`1px solid ${C.border}`, borderRadius:'10px', color:C.text, fontSize:'0.9rem', resize:'none', outline:'none', overflowY:'auto', fontFamily:"'Inter',sans-serif", lineHeight:1.6, colorScheme:'dark' }}
           />
-          {isRecordingSupported() && (
+          {/* Actions stacked vertically so the input keeps its full width (two side-by-side
+              buttons made it feel cramped). Mic on top, Send anchored to the bottom. */}
+          <div style={{ display:'flex', flexDirection:'column', justifyContent:'space-between', flexShrink:0 }}>
+            {isRecordingSupported() ? (
+              <button
+                onClick={handleMic}
+                disabled={loading || transcribing}
+                title={recording ? 'Stop & transcribe' : 'Speak your hand'}
+                style={{
+                  width:'44px', height:'44px', borderRadius:'10px', border:'none', flexShrink:0,
+                  background: recording ? C.redDim : C.surfaceHigh,
+                  color: recording ? C.red : (transcribing ? C.textMuted : C.secondary),
+                  cursor: (loading || transcribing) ? 'not-allowed' : 'pointer',
+                  display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s',
+                }}
+              >
+                {transcribing
+                  ? <div style={{ width:'16px', height:'16px', border:`2px solid ${C.border}`, borderTopColor:C.secondary, borderRadius:'50%', animation:'micspin 0.8s linear infinite' }} />
+                  : recording ? <Square size={14} /> : <Mic size={16} />}
+              </button>
+            ) : <span />}
             <button
-              onClick={handleMic}
-              disabled={loading || transcribing}
-              title={recording ? 'Stop & transcribe' : 'Speak your hand'}
+              onClick={handleSend}
+              disabled={!input.trim() || loading}
               style={{
                 width:'44px', height:'44px', borderRadius:'10px', border:'none', flexShrink:0,
-                background: recording ? C.redDim : C.surfaceHigh,
-                color: recording ? C.red : (transcribing ? C.textMuted : C.secondary),
-                cursor: (loading || transcribing) ? 'not-allowed' : 'pointer',
+                background: input.trim() && !loading ? 'linear-gradient(135deg,#67f09a,#54e98a,#2db866)' : C.surfaceHigh,
+                color: input.trim() && !loading ? '#061a0e' : C.textMuted,
+                cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
                 display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s',
               }}
             >
-              {transcribing
-                ? <div style={{ width:'16px', height:'16px', border:`2px solid ${C.border}`, borderTopColor:C.secondary, borderRadius:'50%', animation:'micspin 0.8s linear infinite' }} />
-                : recording ? <Square size={14} /> : <Mic size={16} />}
+              <Send size={16} />
             </button>
-          )}
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || loading}
-            style={{
-              width:'44px', height:'44px', borderRadius:'10px', border:'none', flexShrink:0,
-              background: input.trim() && !loading ? 'linear-gradient(135deg,#67f09a,#54e98a,#2db866)' : C.surfaceHigh,
-              color: input.trim() && !loading ? '#061a0e' : C.textMuted,
-              cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
-              display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s',
-            }}
-          >
-            <Send size={16} />
-          </button>
+          </div>
         </div>
       </div>
 

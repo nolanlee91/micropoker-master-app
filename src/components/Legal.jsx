@@ -13,7 +13,7 @@ import React from 'react'
 
 const APP_NAME      = 'MicroPoker Master'
 const COMPANY       = 'MicroPoker Master'
-const CONTACT_EMAIL = 'micropokermaster@gmail.com'
+const CONTACT_EMAIL = 'support@micropokermaster.com'
 const EFFECTIVE     = 'June 19, 2026'
 const GOVERNING_LAW = '[your country or state]'  // ← set this
 

@@ -2,12 +2,14 @@ import React, { useState } from 'react'
 import { Mail } from 'lucide-react'
 import { theme } from '../theme/theme'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../lib/supabase'
 
 export default function LoginScreen({ onClose }) {
   const { signInWithGoogle, signInWithEmail, linkGoogle, isAnonymous } = useAuth()
   const [email, setEmail] = useState('')
   const [emailSent, setEmailSent] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [googleBusy, setGoogleBusy] = useState(false)
   const [error, setError] = useState('')
 
   async function handleEmailSubmit(e) {
@@ -24,15 +26,34 @@ export default function LoginScreen({ onClose }) {
     }
   }
 
-  // Anonymous → LINK so the accumulated leak profile carries over. If that Google
-  // account already belongs to another MPM account, linkIdentity errors → fall back
-  // to a normal fresh sign-in (returning user accessing their existing account).
+  // Anonymous → only LINK (to carry the guest's leak profile into the new Google
+  // account) when the guest actually HAS data worth keeping. A returning user signing
+  // back in has an empty guest session, so we skip straight to a normal Google sign-in
+  // — one tap, into their existing account, with no failed-link double-bounce.
+  // (linkIdentity fails for an already-registered Google only AFTER the redirect, so
+  // attempting it for everyone forced returning users through a second account picker.)
   async function handleGoogle() {
-    if (isAnonymous) {
-      const { error } = await linkGoogle()
-      if (error) await signInWithGoogle()
-    } else {
+    if (googleBusy) return
+    setGoogleBusy(true)
+    try {
+      if (isAnonymous) {
+        let hasGuestData = false
+        try {
+          const { count } = await supabase
+            .from('hand_history')
+            .select('id', { count: 'exact', head: true })
+          hasGuestData = (count || 0) > 0
+        } catch { /* if we can't tell, fall through to a normal sign-in */ }
+        if (hasGuestData) {
+          const { error } = await linkGoogle()   // preserve profile via account link
+          if (error) await signInWithGoogle()    // sync error → fresh sign-in
+          return
+        }
+      }
       await signInWithGoogle()
+    } finally {
+      // A redirect is normally in flight by now; only matters if it didn't start.
+      setGoogleBusy(false)
     }
   }
 
@@ -93,6 +114,7 @@ export default function LoginScreen({ onClose }) {
           {/* Google */}
           <button
             onClick={handleGoogle}
+            disabled={googleBusy}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -107,14 +129,15 @@ export default function LoginScreen({ onClose }) {
               fontSize: '0.9rem',
               fontWeight: 500,
               fontFamily: theme.typography.fontFamily,
-              cursor: 'pointer',
+              cursor: googleBusy ? 'wait' : 'pointer',
+              opacity: googleBusy ? 0.7 : 1,
               transition: 'opacity 0.15s',
             }}
-            onMouseOver={e => e.currentTarget.style.opacity = '0.88'}
-            onMouseOut={e => e.currentTarget.style.opacity = '1'}
+            onMouseOver={e => { if (!googleBusy) e.currentTarget.style.opacity = '0.88' }}
+            onMouseOut={e => { if (!googleBusy) e.currentTarget.style.opacity = '1' }}
           >
             <GoogleIcon />
-            Continue with Google
+            {googleBusy ? 'Connecting…' : 'Continue with Google'}
           </button>
 
           {/* Divider */}

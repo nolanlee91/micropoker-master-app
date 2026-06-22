@@ -81,6 +81,73 @@ export default async function handler(req, res) {
     if (error) console.error('[webhook] upsert error:', error.message)
   }
 
+  // Record a KOL commission for a paid invoice — IF the subscription still carries
+  // a promo code that maps to a KOL. The promo code (e.g. NOLAN) is the attribution
+  // key: the customer entered it at checkout to get 10% off. We pay 20% of what they
+  // ACTUALLY paid (invoice.amount_paid, already net of the discount).
+  //
+  // Year-1 cap is automatic: the coupon is `repeating 12 months`, so after a year the
+  // discount drops off the invoice → no promo code here → no commission. The discount
+  // being present IS the "still within year 1" signal — no date math required.
+  async function recordCommission(invoice) {
+    // Subscription invoices only; ignore one-off / $0 invoices.
+    const subId = typeof invoice.subscription === 'string'
+      ? invoice.subscription : invoice.subscription?.id
+    if (!subId) return
+    const amountPaid = invoice.amount_paid || 0
+    if (amountPaid <= 0) return
+
+    // Read the promotion code off the subscription's active discount(s). Retrieve
+    // expanded so we get the Discount object (the webhook payload only has ids).
+    let sub
+    try {
+      sub = await stripe.subscriptions.retrieve(subId, { expand: ['discounts'] })
+    } catch (err) {
+      console.error('[webhook] commission: sub retrieve failed', err.message); return
+    }
+    const discounts = sub.discounts?.length ? sub.discounts : (sub.discount ? [sub.discount] : [])
+    let promoCodeId = null
+    for (const d of discounts) {
+      const pc = (typeof d === 'object' && d) ? d.promotion_code : null
+      if (pc) { promoCodeId = typeof pc === 'string' ? pc : pc.id; break }
+    }
+    if (!promoCodeId) return  // no KOL promo on this invoice → nothing to pay
+
+    // Map the promo code → KOL.
+    const { data: kol } = await admin
+      .from('kols')
+      .select('id, email, commission_rate, active')
+      .eq('stripe_promotion_code_id', promoCodeId)
+      .maybeSingle()
+    if (!kol || kol.active === false) return
+
+    // Anti-abuse: a KOL can't earn commission off their own subscription.
+    const buyerEmail = (invoice.customer_email || '').trim().toLowerCase()
+    if (kol.email && buyerEmail && kol.email.trim().toLowerCase() === buyerEmail) {
+      console.log('[webhook] commission: self-referral blocked for', promoCodeId); return
+    }
+
+    const userId = sub.metadata?.supabase_user_id || invoice.metadata?.supabase_user_id || null
+    const rate = kol.commission_rate ?? 0.20
+    const commission = Math.round(amountPaid * rate)
+
+    // Idempotent on stripe_invoice_id (UNIQUE) — a re-delivered webhook is a no-op.
+    const { error } = await admin.from('commissions').insert({
+      kol_id:                 kol.id,
+      user_id:                userId,
+      stripe_invoice_id:      invoice.id,
+      stripe_subscription_id: subId,
+      promo_code_id:          promoCodeId,
+      currency:               invoice.currency || 'usd',
+      gross_amount:           amountPaid,
+      commission_amount:      commission,
+      paid_at:                invoice.created ? new Date(invoice.created * 1000).toISOString() : null,
+    })
+    if (error && error.code !== '23505') {  // 23505 = unique violation = already recorded
+      console.error('[webhook] commission insert error:', error.message)
+    }
+  }
+
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -97,6 +164,12 @@ export default async function handler(req, res) {
       case 'customer.subscription.deleted': {
         // status 'canceled' + past period_end → entitlement check returns false.
         await upsertFromSubscription(event.data.object)
+        break
+      }
+      case 'invoice.paid': {
+        // Each successful charge (first + every renewal) → KOL commission if a promo
+        // code is attached. recordCommission self-limits to year 1 via the coupon.
+        await recordCommission(event.data.object)
         break
       }
       default:

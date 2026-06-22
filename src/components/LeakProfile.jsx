@@ -91,10 +91,9 @@ function Empty({ navigate }) {
 export default function LeakProfile() {
   const navigate = useNavigate()
   const { hands } = useData()
-  const { isAnonymous, linkGoogle } = useAuth()
+  const { isAnonymous, setShowLogin } = useAuth()
   const { isPro, loading: proLoading, refresh: refreshPro } = usePro()
   const [showPaywall, setShowPaywall] = useState(false)
-  const [linking, setLinking] = useState(false)
   const [error, setError] = useState('')
   const [fixPlans, setFixPlans] = useState({})   // { [category]: { loading, data, error } }
   const [openPlans, setOpenPlans] = useState({}) // which fix plans are expanded
@@ -150,12 +149,11 @@ export default function LeakProfile() {
     }
   }, [refreshPro])
 
-  const handleCreateAccount = useCallback(async () => {
-    setLinking(true); setError('')
-    const { error } = await linkGoogle()
-    if (error) { setLinking(false); setError(error.message) }
-    // on success the browser redirects to Google and back
-  }, [linkGoogle])
+  // Open the email/password sign-up overlay. signUpWithPassword links the new account
+  // onto the current guest user, so the leak profile carries over (no data loss).
+  const handleCreateAccount = useCallback(() => {
+    setShowLogin(true)
+  }, [setShowLogin])
 
   const revealed = nAnalyzed >= UNLOCK_HANDS && leaks.length > 0
 
@@ -332,8 +330,8 @@ export default function LeakProfile() {
                   ? `We've found ${nRecurring} recurring leak${nRecurring>1?'s':''} costing you money. Create a free account to save your Leak Profile.`
                   : `Create a free account to save your Leak Profile across devices.`}</span>
               </div>
-              <button onClick={handleCreateAccount} disabled={linking} style={{ padding:'11px 16px', borderRadius:'10px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontSize:'0.8rem', fontWeight:800, cursor: linking?'not-allowed':'pointer' }}>
-                {linking ? 'Connecting…' : 'Create free account →'}
+              <button onClick={handleCreateAccount} style={{ padding:'11px 16px', borderRadius:'10px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontSize:'0.8rem', fontWeight:800, cursor:'pointer' }}>
+                Create free account →
               </button>
             </div>
           )}

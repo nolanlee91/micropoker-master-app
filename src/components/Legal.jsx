@@ -65,8 +65,8 @@ export function Terms() {
 
       <H2>Your account</H2>
       <p>
-        You may use the App anonymously or sign in with Google or email. You are responsible for activity
-        under your account and for keeping access to your sign-in method secure.
+        You may use the App anonymously or create an account with your email and a password. You are
+        responsible for activity under your account and for keeping your password secure.
       </p>
 
       <H2>Pro subscription &amp; billing</H2>
@@ -128,7 +128,7 @@ export function PrivacyPolicy() {
 
       <H2>Information we collect</H2>
       <ul>
-        <li><strong>Account:</strong> your email address (and, if you use Google sign-in, your basic Google profile name) for authentication. You may also use the App with an anonymous session and no account.</li>
+        <li><strong>Account:</strong> your email address and password (stored securely hashed) for authentication. You may also use the App with an anonymous session and no account.</li>
         <li><strong>Your content:</strong> the poker hands, sessions, notes, and figures (e.g. buy-in / cash-out amounts) you choose to log, plus AI analysis generated for them.</li>
         <li><strong>Voice input (optional):</strong> if you record a hand by voice, the audio is sent for transcription (see below). We do <strong>not</strong> store the audio — only the resulting text, which you can review and edit before it is saved.</li>
         <li><strong>Subscription:</strong> if you buy Pro, we store your subscription status and renewal date. <strong>Payment card details are handled by Stripe — we never receive or store them.</strong></li>
@@ -147,7 +147,7 @@ export function PrivacyPolicy() {
       <H2>Third-party services</H2>
       <ul>
         <li><strong>Supabase</strong> — authentication and secure storage of your account and data, isolated per-user via row-level security.</li>
-        <li><strong>Google (Gemini API &amp; Google Sign-In)</strong> — receives hand details and any voice audio only when you request an AI analysis or use voice; provides optional Google sign-in.</li>
+        <li><strong>Google (Gemini API)</strong> — receives hand details and any voice audio only when you request an AI analysis or use voice.</li>
         <li><strong>Stripe</strong> — processes subscription payments; handles your card data directly.</li>
         <li><strong>Vercel</strong> — hosts the App.</li>
       </ul>

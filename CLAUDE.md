@@ -21,7 +21,7 @@ No test or lint scripts are configured.
 
 ### Auth & data flow
 
-1. **`src/context/AuthContext.jsx`** — Supabase auth. Sign in via Google OAuth or email magic link (OTP). On first authenticated load it runs a one-time **localStorage → Supabase migration** (flag key `supabase-migration-v1`): if legacy local data exists it shows `MigratePrompt`, otherwise it silently marks migration done.
+1. **`src/context/AuthContext.jsx`** — Supabase auth. **Email + password only** (no Google OAuth — its consent screen exposed the raw `*.supabase.co` project domain, which read as a scam to non-technical users; no magic link — it emails on every sign-in and would hit the auth rate limit at scale). `signUpWithPassword` links the email/password onto the current anonymous user (via `updateUser`) so the guest's leak profile carries over; `signInWithPassword` for returning users (sends no email → scales freely); `resetPassword` + the `PASSWORD_RECOVERY` event drive `ResetPassword.jsx`. On first authenticated load it runs a one-time **localStorage → Supabase migration** (flag key `supabase-migration-v1`): if legacy local data exists it shows `MigratePrompt`, otherwise it silently marks migration done.
 2. **`src/context/DataContext.jsx`** — owns `hands` and `sessions` state, all CRUD goes through Supabase. Fetches on auth, keeps local state in sync after each mutation. Sessions carry a derived `linkedHandIds` array (hands reference a session via `session_id` FK).
 3. **`src/lib/supabase.js`** — Supabase client from `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`.
 4. **`src/lib/db.js`** — pure mappers between DB rows (snake_case) and frontend objects (camelCase): `rowToHand`/`handToRow`, `rowToSession`/`sessionToRow`.
@@ -40,7 +40,8 @@ Run in the Supabase SQL Editor. Three tables, all with Row-Level Security scopin
 ### Components (`src/components/`)
 
 - **Layout.jsx** — master shell: responsive sidebar (≥768px) / bottom nav (mobile). Houses the preferences panel (default game type, response language) and sign-out.
-- **LoginScreen.jsx** — Google OAuth + email magic-link sign-in.
+- **LoginScreen.jsx** — email + password: sign-in / sign-up / forgot-password modes, plus a "Continue as guest" escape hatch (no login wall).
+- **ResetPassword.jsx** — set-a-new-password screen shown after the user clicks the password-reset email link.
 - **MigratePrompt.jsx** — modal offering to migrate legacy localStorage data into the user's Supabase account.
 - **HandHistory.jsx** — hand logging with card picker, position, result, notes. Hands link to BRM sessions. Triggers the "analyze hand" flow to AICoach.
 - **OddsCalculator.jsx** — equity calculator using a custom base-15 hand evaluator + Monte Carlo simulation (4,000 iterations). Supports up to 3 villains. Card encoding is performance-critical — don't simplify naively.

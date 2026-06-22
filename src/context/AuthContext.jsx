@@ -14,30 +14,9 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined) // undefined = loading
   const [showMigrate, setShowMigrate] = useState(false)
   const [showLogin, setShowLogin] = useState(false) // on-demand login overlay (header "Sign in")
+  const [showRecovery, setShowRecovery] = useState(false) // password-reset screen (from email link)
 
   useEffect(() => {
-    // Recover from a failed anon→Google account LINK. linkIdentity (used so a guest's
-    // leak profile carries into their new Google account) fails AFTER the OAuth
-    // redirect when that Google already belongs to an account — so LoginScreen's
-    // synchronous fallback can't catch it and the user just bounces back as a guest.
-    // If we flagged a link attempt and got that conflict back in the URL, finish by
-    // signing into the existing account with a normal Google OAuth.
-    if (sessionStorage.getItem('mpm-pending-link')) {
-      sessionStorage.removeItem('mpm-pending-link')
-      const u  = new URL(window.location.href)
-      const hp = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-      const code = (u.searchParams.get('error_code') || hp.get('error_code') || '').toLowerCase()
-      const desc = (u.searchParams.get('error_description') || hp.get('error_description') || '').toLowerCase()
-      const linkConflict =
-        code.includes('identity_already_exists') || code.includes('email_exists') ||
-        desc.includes('already') || desc.includes('identity')
-      if (linkConflict) {
-        window.history.replaceState({}, '', u.origin + u.pathname)
-        signInWithGoogle()   // sign into their existing account instead of linking
-        return
-      }
-    }
-
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setSession(session)
@@ -59,7 +38,10 @@ export function AuthProvider({ children }) {
       }
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // Clicking the password-reset link signs the user in with a recovery token and
+      // fires this event — show the "set a new password" screen.
+      if (event === 'PASSWORD_RECOVERY') setShowRecovery(true)
       setSession(session)
       if (session && !session.user?.is_anonymous) checkMigration()
     })
@@ -141,34 +123,41 @@ export function AuthProvider({ children }) {
     setShowMigrate(false)
   }
 
-  async function signInWithGoogle() {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin },
-    })
-  }
-
-  async function signInWithEmail(email) {
-    return supabase.auth.signInWithOtp({
-      email,
+  // Create an account with email + password. Sign-IN never sends an email, so logins
+  // scale freely; only this confirmation (once) and the reset below ever send mail.
+  // Anonymous-first: if the user is currently a guest, LINK the email+password onto
+  // the SAME user id (updateUser) so their accumulated leak profile is preserved — not
+  // replaced by a fresh account. updateUser sends a confirmation email but keeps them
+  // signed in on this device meanwhile. A brand-new (non-guest) visitor falls back to
+  // a plain signUp.
+  async function signUpWithPassword(email, password) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user?.is_anonymous) {
+      return supabase.auth.updateUser({ email, password })
+    }
+    return supabase.auth.signUp({
+      email, password,
       options: { emailRedirectTo: window.location.origin },
     })
   }
 
-  // Convert the current ANONYMOUS user into a real Google account by linking the
-  // identity to the SAME user id — so the accumulated leak profile is preserved,
-  // not replaced by a fresh account. (Requires "Manual linking" enabled in the
-  // Supabase Auth settings.) Used by the "save your Leak Profile" prompt.
-  async function linkGoogle() {
-    // Flag the attempt so that, if the link fails AFTER the OAuth redirect (the
-    // Google account already belongs to an existing user), the mount effect can
-    // recover by completing a normal Google sign-in. Survives the redirect because
-    // sessionStorage persists across same-tab navigations.
-    sessionStorage.setItem('mpm-pending-link', '1')
-    return supabase.auth.linkIdentity({
-      provider: 'google',
-      options: { redirectTo: window.location.origin },
+  async function signInWithPassword(email, password) {
+    return supabase.auth.signInWithPassword({ email, password })
+  }
+
+  // Send a password-reset email. The link returns to the app and fires the
+  // PASSWORD_RECOVERY event (handled above) → shows the set-new-password screen.
+  async function resetPassword(email) {
+    return supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
     })
+  }
+
+  // Set a new password during the recovery flow, then dismiss the recovery screen.
+  async function updatePassword(password) {
+    const res = await supabase.auth.updateUser({ password })
+    if (!res.error) setShowRecovery(false)
+    return res
   }
 
   async function signOut() {
@@ -219,11 +208,13 @@ export function AuthProvider({ children }) {
       showMigrate,
       showLogin,
       setShowLogin,
+      showRecovery,
       migrateData,
       skipMigration,
-      signInWithGoogle,
-      signInWithEmail,
-      linkGoogle,
+      signUpWithPassword,
+      signInWithPassword,
+      resetPassword,
+      updatePassword,
       signOut,
       continueAsGuest,
       deleteAccount,

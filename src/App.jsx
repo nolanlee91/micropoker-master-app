@@ -11,18 +11,22 @@ import Debrief from './components/Debrief'
 import Quiz from './components/Quiz'
 import Account from './components/Account'
 import LoginScreen from './components/LoginScreen'
+import ResetPassword from './components/ResetPassword'
 import MigratePrompt from './components/MigratePrompt'
 import { useAuth } from './context/AuthContext'
 import { DataProvider, useData } from './context/DataContext'
 
 export default function App() {
-  const { session, showMigrate, showLogin, setShowLogin } = useAuth()
+  const { session, showMigrate, showLogin, setShowLogin, showRecovery } = useAuth()
   const { pathname } = useLocation()
 
   // Public legal/support pages — must be reachable without auth (Stripe + store requirement)
   if (pathname === '/terms')   return <Terms />
   if (pathname === '/privacy') return <PrivacyPolicy />
   if (pathname === '/support') return <Support />
+
+  // Arrived via the password-reset email link → set a new password (over everything).
+  if (showRecovery) return <ResetPassword />
 
   // session: undefined = loading OR anonymous sign-in in flight → spinner.
   // No login wall: AuthContext signs the user in anonymously so the Paste Hand

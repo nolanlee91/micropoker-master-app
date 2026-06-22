@@ -65,7 +65,7 @@ export default function LoginScreen({ onClose }) {
           setError('This email already has an account. Switch to Sign in.')
         } else setError(error.message)
       } else {
-        setNotice(`Account created. We sent a confirmation link to ${mail} — confirm it to secure your account. You can keep using the app now.`)
+        setNotice(`Check your inbox — we sent a confirmation link to ${mail}. Click it to activate your account and sign in. Your current data will be there.`)
       }
     } else {
       const { error } = await signInWithPassword(mail, password)

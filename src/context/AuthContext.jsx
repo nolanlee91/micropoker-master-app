@@ -123,22 +123,38 @@ export function AuthProvider({ children }) {
     setShowMigrate(false)
   }
 
-  // Create an account with email + password. Sign-IN never sends an email, so logins
-  // scale freely; only this confirmation (once) and the reset below ever send mail.
-  // Anonymous-first: if the user is currently a guest, LINK the email+password onto
-  // the SAME user id (updateUser) so their accumulated leak profile is preserved — not
-  // replaced by a fresh account. updateUser sends a confirmation email but keeps them
-  // signed in on this device meanwhile. A brand-new (non-guest) visitor falls back to
-  // a plain signUp.
+  // Create an account with email + password. Email confirmation is REQUIRED (a typo'd
+  // address must not lock the user out of a later, paid account), so we always use
+  // signUp: it sends the standard "Confirm signup" email, which works. We deliberately
+  // do NOT use updateUser to link the email onto the guest — that triggers an email-CHANGE
+  // confirmation which crashes for a guest (empty current email).
+  //
+  // Best-effort, instead: right after signUp (while the guest token is still valid) we
+  // copy the guest's hands/sessions onto the new account so the leak profile carries
+  // over. If that fails, the account is still created — we accept losing the (free-tier)
+  // guest data over blocking sign-up.
   async function signUpWithPassword(email, password) {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user?.is_anonymous) {
-      return supabase.auth.updateUser({ email, password })
-    }
-    return supabase.auth.signUp({
+    // Capture the guest identity BEFORE signUp so we can carry its data over.
+    const { data: { session: guest } } = await supabase.auth.getSession()
+    const guestId    = guest?.user?.is_anonymous ? guest.user.id : null
+    const guestToken = guestId ? guest.access_token : null
+
+    const result = await supabase.auth.signUp({
       email, password,
       options: { emailRedirectTo: window.location.origin },
     })
+
+    const newId = result.data?.user?.id
+    if (!result.error && guestId && guestToken && newId && newId !== guestId) {
+      try {
+        await fetch('/api/migrate-guest-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${guestToken}` },
+          body: JSON.stringify({ targetUserId: newId }),
+        })
+      } catch { /* guest data not carried — account still created */ }
+    }
+    return result
   }
 
   async function signInWithPassword(email, password) {

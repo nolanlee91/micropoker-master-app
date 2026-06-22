@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Lock } from 'lucide-react'
+import { Lock, Eye, EyeOff } from 'lucide-react'
 import { theme } from '../theme/theme'
 import { useAuth } from '../context/AuthContext'
 
@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext'
 export default function ResetPassword() {
   const { updatePassword } = useAuth()
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -51,14 +52,14 @@ export default function ResetPassword() {
               <Lock size={16} />
             </span>
             <input
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               placeholder="New password (min 6)"
               value={password}
               onChange={e => setPassword(e.target.value)}
               autoComplete="new-password"
               required
               style={{
-                width: '100%', padding: '11px 14px 11px 38px',
+                width: '100%', padding: '11px 40px 11px 38px',
                 background: theme.colors.surfaceContainerHigh, color: theme.colors.onSurface,
                 border: '1px solid rgba(255,255,255,0.08)', borderRadius: theme.radius.lg,
                 fontSize: '0.9rem', fontFamily: theme.typography.fontFamily,
@@ -67,6 +68,14 @@ export default function ResetPassword() {
               onFocus={e => e.target.style.borderColor = 'rgba(84,233,138,0.4)'}
               onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.08)'}
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(s => !s)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              style={{ position: 'absolute', right: '8px', background: 'none', border: 'none', padding: '4px', cursor: 'pointer', color: theme.colors.onSurfaceVariant, display: 'flex' }}
+            >
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
           </div>
 
           {error && (

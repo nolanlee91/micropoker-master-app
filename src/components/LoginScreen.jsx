@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Mail, Lock } from 'lucide-react'
+import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { theme } from '../theme/theme'
 import { useAuth } from '../context/AuthContext'
 
@@ -15,6 +15,7 @@ export default function LoginScreen({ onClose }) {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [guestBusy, setGuestBusy] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [notice, setNotice] = useState('')      // success message (check inbox)
   const [error, setError] = useState('')
 
@@ -170,15 +171,27 @@ export default function LoginScreen({ onClose }) {
               </Field>
 
               {mode !== 'forgot' && (
-                <Field icon={<Lock size={16} />}>
+                <Field
+                  icon={<Lock size={16} />}
+                  trailing={
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(s => !s)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', color: theme.colors.onSurfaceVariant, display: 'flex' }}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  }
+                >
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     placeholder={mode === 'signup' ? 'Create a password (min 6)' : 'Password'}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                     required
-                    style={inputStyle}
+                    style={passwordInputStyle}
                     onFocus={e => e.target.style.borderColor = 'rgba(84,233,138,0.4)'}
                     onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.08)'}
                   />
@@ -258,14 +271,17 @@ export default function LoginScreen({ onClose }) {
   )
 }
 
-// Input wrapper with a leading icon.
-function Field({ icon, children }) {
+// Input wrapper with a leading icon and an optional trailing element (e.g. show/hide).
+function Field({ icon, trailing, children }) {
   return (
     <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
       <span style={{ position: 'absolute', left: '12px', color: theme.colors.onSurfaceVariant, display: 'flex', pointerEvents: 'none' }}>
         {icon}
       </span>
       {children}
+      {trailing && (
+        <span style={{ position: 'absolute', right: '8px', display: 'flex' }}>{trailing}</span>
+      )}
     </div>
   )
 }
@@ -283,6 +299,9 @@ const inputStyle = {
   boxSizing: 'border-box',
   transition: 'border-color 0.15s',
 }
+
+// Password variant — extra right padding so text doesn't run under the eye toggle.
+const passwordInputStyle = { ...inputStyle, padding: '11px 40px 11px 38px' }
 
 const switchTextStyle = {
   ...theme.typography.body,

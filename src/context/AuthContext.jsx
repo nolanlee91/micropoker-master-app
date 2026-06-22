@@ -16,6 +16,28 @@ export function AuthProvider({ children }) {
   const [showLogin, setShowLogin] = useState(false) // on-demand login overlay (header "Sign in")
 
   useEffect(() => {
+    // Recover from a failed anon→Google account LINK. linkIdentity (used so a guest's
+    // leak profile carries into their new Google account) fails AFTER the OAuth
+    // redirect when that Google already belongs to an account — so LoginScreen's
+    // synchronous fallback can't catch it and the user just bounces back as a guest.
+    // If we flagged a link attempt and got that conflict back in the URL, finish by
+    // signing into the existing account with a normal Google OAuth.
+    if (sessionStorage.getItem('mpm-pending-link')) {
+      sessionStorage.removeItem('mpm-pending-link')
+      const u  = new URL(window.location.href)
+      const hp = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+      const code = (u.searchParams.get('error_code') || hp.get('error_code') || '').toLowerCase()
+      const desc = (u.searchParams.get('error_description') || hp.get('error_description') || '').toLowerCase()
+      const linkConflict =
+        code.includes('identity_already_exists') || code.includes('email_exists') ||
+        desc.includes('already') || desc.includes('identity')
+      if (linkConflict) {
+        window.history.replaceState({}, '', u.origin + u.pathname)
+        signInWithGoogle()   // sign into their existing account instead of linking
+        return
+      }
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setSession(session)
@@ -138,6 +160,11 @@ export function AuthProvider({ children }) {
   // not replaced by a fresh account. (Requires "Manual linking" enabled in the
   // Supabase Auth settings.) Used by the "save your Leak Profile" prompt.
   async function linkGoogle() {
+    // Flag the attempt so that, if the link fails AFTER the OAuth redirect (the
+    // Google account already belongs to an existing user), the mount effect can
+    // recover by completing a normal Google sign-in. Survives the redirect because
+    // sessionStorage persists across same-tab navigations.
+    sessionStorage.setItem('mpm-pending-link', '1')
     return supabase.auth.linkIdentity({
       provider: 'google',
       options: { redirectTo: window.location.origin },

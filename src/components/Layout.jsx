@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { NavLink } from 'react-router-dom'
-import { History, Wallet, Calculator, BrainCircuit, Spade, Zap, LogOut, Settings, X, TrendingDown, ClipboardList, CreditCard, Download, Share } from 'lucide-react'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { History, Wallet, Calculator, BrainCircuit, Spade, Zap, LogOut, Settings, X, TrendingDown, ClipboardList, Download, Share } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { useLocalStorage } from '../hooks/useLocalStorage'
-import { usePro } from '../hooks/usePro'
-import { openBillingPortal } from '../lib/portal'
 import { useInstall } from '../lib/pwaInstall'
 
 const NAV = [
@@ -36,40 +34,9 @@ function getDisplayName(session) {
 }
 
 function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
-  const { deleteAccount, session, setShowLogin } = useAuth()
-  const { isPro } = usePro()
+  const navigate = useNavigate()
   const install = useInstall()
-  const isAnon = !!session?.user?.is_anonymous
-  const email  = session?.user?.email || ''
   const [soundEnabled, setSoundEnabled] = useLocalStorage('sound-enabled', true)
-  const [confirming, setConfirming] = useState(false)
-  const [deleting,   setDeleting]   = useState(false)
-  const [delError,   setDelError]   = useState('')
-  const [portalLoading, setPortalLoading] = useState(false)
-  const [portalError,   setPortalError]   = useState('')
-
-  async function handleManageSubscription() {
-    setPortalLoading(true)
-    setPortalError('')
-    try {
-      await openBillingPortal()   // redirects on success
-    } catch (e) {
-      setPortalError(e.message || 'Could not open billing portal.')
-      setPortalLoading(false)
-    }
-  }
-
-  async function handleDelete() {
-    setDeleting(true)
-    setDelError('')
-    const err = await deleteAccount()
-    if (err) {
-      setDelError(err.message || 'Could not delete account')
-      setDeleting(false)
-      setConfirming(false)
-    }
-    // On success the auth state changes and the whole app unmounts to the login screen.
-  }
 
   const lbl = txt => (
     <div style={{ fontSize:'0.52rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:C.textMuted, marginBottom:'8px' }}>{txt}</div>
@@ -149,98 +116,15 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
         </div>
       )}
 
-      {/* Account — identity, billing, and deletion in one distinct boxed card */}
-      <div style={{ marginTop:'16px', padding:'14px', borderRadius:'10px', background:C.surface, border:`1px solid ${C.border}` }}>
-        {lbl('Account')}
-        {isAnon ? (
-          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-            <div style={{ fontSize:'0.66rem', color:C.textMuted, lineHeight:1.5 }}>
-              You're a guest — your leak profile is saved on this device only.
-            </div>
-            <button
-              onClick={() => { onClose(); setShowLogin(true) }}
-              style={{
-                width:'100%', padding:'9px', borderRadius:'8px', border:'none',
-                background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e',
-                fontSize:'0.7rem', fontWeight:800, cursor:'pointer',
-              }}
-            >
-              Sign in / Create account
-            </button>
-          </div>
-        ) : (<>
-        <div style={{ fontSize:'0.66rem', color:C.textMuted, marginBottom:'10px', wordBreak:'break-all', lineHeight:1.5 }}>
-          {email ? <>Signed in as <span style={{ color:C.text }}>{email}</span></> : 'Signed in'}
-        </div>
-        {isPro && (
-          <div style={{ marginBottom:'12px' }}>
-            <button
-              onClick={handleManageSubscription}
-              disabled={portalLoading}
-              style={{
-                width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'7px',
-                padding:'9px', borderRadius:'8px', border:`1px solid ${C.border}`, background:C.surfaceHigh,
-                color:C.text, fontSize:'0.68rem', fontWeight:600, cursor: portalLoading ? 'not-allowed' : 'pointer',
-                opacity: portalLoading ? 0.6 : 1,
-              }}
-            >
-              <CreditCard size={13} /> {portalLoading ? 'Opening…' : 'Manage subscription'}
-            </button>
-            <div style={{ fontSize:'0.58rem', color:C.textMuted, marginTop:'6px', lineHeight:1.5 }}>
-              Update payment, view invoices, or cancel — on Stripe.
-            </div>
-            {portalError && (
-              <div style={{ fontSize:'0.6rem', color:'#f47067', marginTop:'6px' }}>{portalError}</div>
-            )}
-          </div>
-        )}
-        {!confirming ? (
-          <button
-            onClick={() => { setConfirming(true); setDelError('') }}
-            style={{
-              width:'100%', padding:'8px', borderRadius:'8px',
-              border:'1px solid rgba(244,112,103,0.3)', background:'transparent',
-              color:'#f47067', fontSize:'0.66rem', fontWeight:600, cursor:'pointer',
-            }}
-          >
-            Delete account
-          </button>
-        ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-            <div style={{ fontSize:'0.62rem', color:C.textMuted, lineHeight:1.5 }}>
-              This permanently deletes your account and all hands, sessions and data. This cannot be undone.
-            </div>
-            {isPro && (
-              <div style={{ fontSize:'0.62rem', color:'#f47067', lineHeight:1.5 }}>
-                Your Pro subscription will be canceled immediately. Remaining subscription time is non-refundable.
-              </div>
-            )}
-            <div style={{ display:'flex', gap:'6px' }}>
-              <button
-                onClick={() => setConfirming(false)}
-                disabled={deleting}
-                style={{ flex:1, padding:'8px', borderRadius:'8px', border:'none', background:C.surfaceHigh, color:C.textMuted, fontSize:'0.66rem', fontWeight:600, cursor:'pointer' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                style={{ flex:1, padding:'8px', borderRadius:'8px', border:'none', background:'#f47067', color:'#1a0a08', fontSize:'0.66rem', fontWeight:700, cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.6 : 1 }}
-              >
-                {deleting ? 'Deleting…' : 'Delete everything'}
-              </button>
-            </div>
-          </div>
-        )}
-        {delError && (
-          <div style={{ fontSize:'0.6rem', color:'#f47067', marginTop:'6px' }}>{delError}</div>
-        )}
-        </>)}
-      </div>
-
-      {/* Legal — public policy pages (also required for Stripe / app stores) */}
+      {/* Bottom links — Account opens its own page (like Terms/Privacy/Support) so the
+          panel stays light. Account is in-app (SPA navigate); legal pages are public. */}
       <div style={{ marginTop:'16px', paddingTop:'14px', borderTop:`1px solid ${C.border}`, display:'flex', gap:'16px', flexWrap:'wrap' }}>
+        <button
+          onClick={() => { onClose(); navigate('/account') }}
+          style={{ background:'none', border:'none', padding:0, fontSize:'0.66rem', color:C.text, fontWeight:600, cursor:'pointer' }}
+        >
+          Account
+        </button>
         <a href="/terms"   style={{ fontSize:'0.66rem', color:C.textMuted, textDecoration:'none' }}>Terms</a>
         <a href="/privacy" style={{ fontSize:'0.66rem', color:C.textMuted, textDecoration:'none' }}>Privacy</a>
         <a href="/support" style={{ fontSize:'0.66rem', color:C.textMuted, textDecoration:'none' }}>Support</a>

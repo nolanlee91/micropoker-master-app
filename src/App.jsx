@@ -9,6 +9,7 @@ import BankrollManager from './components/BankrollManager'
 import LeakProfile from './components/LeakProfile'
 import Debrief from './components/Debrief'
 import Quiz from './components/Quiz'
+import Account from './components/Account'
 import LoginScreen from './components/LoginScreen'
 import MigratePrompt from './components/MigratePrompt'
 import { useAuth } from './context/AuthContext'
@@ -60,6 +61,7 @@ function AppRoutes() {
         <Route path="/odds"     element={<OddsCalculator />} />
         <Route path="/quiz"     element={<Quiz />} />
         <Route path="/coach"    element={<AICoach preloadedHand={analyzingHand} onHandConsumed={() => setAnalyzingHand(null)} />} />
+        <Route path="/account"  element={<Account />} />
       </Routes>
     </Layout>
   )

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
@@ -139,7 +140,18 @@ export function AuthProvider({ children }) {
     const guestId    = guest?.user?.is_anonymous ? guest.user.id : null
     const guestToken = guestId ? guest.access_token : null
 
-    const result = await supabase.auth.signUp({
+    // Sign up on an ISOLATED, sessionless client. Calling signUp() on the main client
+    // (which holds the anonymous session) makes GoTrue treat it as an email change on
+    // the guest user — and that confirmation send crashes ("unexpected_failure: Error
+    // sending confirmation email"). A client with no session does a clean signUp, so the
+    // standard "Confirm signup" email is sent. The main client keeps the guest session
+    // alive (token still valid) so we can migrate the guest's data below.
+    const fresh = createClient(
+      import.meta.env.VITE_SUPABASE_URL,
+      import.meta.env.VITE_SUPABASE_ANON_KEY,
+      { auth: { persistSession: false, autoRefreshToken: false } },
+    )
+    const result = await fresh.auth.signUp({
       email, password,
       options: { emailRedirectTo: window.location.origin },
     })

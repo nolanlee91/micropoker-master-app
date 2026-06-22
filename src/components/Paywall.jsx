@@ -23,8 +23,8 @@ const PERKS = [
 ]
 
 const PLANS = {
-  monthly: { label: 'Monthly', price: '$9.99', cadence: '/mo',   note: '' },
-  annual:  { label: 'Annual',  price: '$83.99', cadence: '/yr',  note: 'Save 30% — $6.99/mo' },
+  monthly: { label: 'Monthly', price: '$11.99', cadence: '/mo',   note: '' },
+  annual:  { label: 'Annual',  price: '$119', cadence: '/yr',  note: 'Save 17% — $9.92/mo' },
 }
 
 export default function Paywall({ onClose, onRestore }) {

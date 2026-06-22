@@ -3,7 +3,7 @@
 > Code đã xong. File này là các bước cấu hình **bạn** phải làm (mình không tạo tài khoản/khóa thay được).
 > Làm bằng **Stripe Test mode** trước (thẻ test `4242 4242 4242 4242`, ngày bất kỳ tương lai, CVC bất kỳ) — KHÔNG tốn tiền thật. Khi chạy ổn mới chuyển Live.
 
-Mô hình giá đã chốt: **$9.99/tháng** và **$83.99/năm** (giảm ~30%), **không free trial**.
+Mô hình giá đã chốt: **$11.99/tháng** và **$119/năm** (giảm ~17%), **không free trial**.
 
 ---
 
@@ -14,8 +14,8 @@ Mô hình giá đã chốt: **$9.99/tháng** và **$83.99/năm** (giảm ~30%), 
 ## 2. Tạo Product + Price trên Stripe
 - Stripe Dashboard (Test mode) → **Products** → Add product → tên "MicroPoker Master Pro".
 - Thêm **2 recurring prices**:
-  - Monthly: $9.99 / month → copy **Price ID** (`price_...`)
-  - Annual: $83.99 / year → copy **Price ID**
+  - Monthly: $11.99 / month → copy **Price ID** (`price_...`)
+  - Annual: $119 / year → copy **Price ID**
 - Giữ 2 Price ID này cho bước 4.
 
 ## 3. Lấy API keys

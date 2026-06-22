@@ -36,20 +36,11 @@ function getDisplayName(session) {
 }
 
 function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
-  const { deleteAccount, session, linkGoogle, signOut } = useAuth()
+  const { deleteAccount, session, setShowLogin } = useAuth()
   const { isPro } = usePro()
   const install = useInstall()
   const isAnon = !!session?.user?.is_anonymous
   const email  = session?.user?.email || ''
-  const [linking, setLinking] = useState(false)
-  const [linkErr, setLinkErr] = useState('')
-
-  async function handleCreateAccount() {
-    setLinking(true); setLinkErr('')
-    const { error } = await linkGoogle()   // links anon → Google, keeps the leak profile
-    if (error) { setLinkErr(error.message || 'Could not connect. Try “Log in” instead.'); setLinking(false) }
-    // on success the browser redirects to Google and back
-  }
   const [soundEnabled, setSoundEnabled] = useLocalStorage('sound-enabled', true)
   const [confirming, setConfirming] = useState(false)
   const [deleting,   setDeleting]   = useState(false)
@@ -179,26 +170,15 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
               You're a guest — your leak profile is saved on this device only.
             </div>
             <button
-              onClick={handleCreateAccount}
-              disabled={linking}
+              onClick={() => { onClose(); setShowLogin(true) }}
               style={{
                 width:'100%', padding:'9px', borderRadius:'8px', border:'none',
                 background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e',
-                fontSize:'0.7rem', fontWeight:800, cursor: linking ? 'not-allowed' : 'pointer', opacity: linking ? 0.7 : 1,
+                fontSize:'0.7rem', fontWeight:800, cursor:'pointer',
               }}
             >
-              {linking ? 'Connecting…' : 'Create free account'}
+              Sign in / Create account
             </button>
-            <button
-              onClick={signOut}
-              style={{
-                width:'100%', padding:'8px', borderRadius:'8px', border:`1px solid ${C.border}`,
-                background:'transparent', color:C.textMuted, fontSize:'0.66rem', fontWeight:600, cursor:'pointer',
-              }}
-            >
-              Already have an account? Log in
-            </button>
-            {linkErr && <div style={{ fontSize:'0.6rem', color:'#f47067' }}>{linkErr}</div>}
           </div>
         ) : (<>
         <div style={{ fontSize:'0.66rem', color:C.textMuted, marginBottom:'10px', wordBreak:'break-all', lineHeight:1.5 }}>
@@ -285,7 +265,7 @@ const PTR_MAX       = 140  // hard cap on how far the content can be dragged
 const PTR_RESIST    = 175  // higher = stiffer spring (must pull deeper to move)
 
 export default function Layout({ children }) {
-  const { session, signOut } = useAuth()
+  const { session, signOut, setShowLogin } = useAuth()
   const { refetch } = useData()
   const displayName = getDisplayName(session)
   const isAnon = !!session?.user?.is_anonymous
@@ -442,7 +422,7 @@ export default function Layout({ children }) {
               {settingsTrigger}
               {isAnon ? (
                 <button
-                  onClick={() => setSettingsOpen(true)}
+                  onClick={() => setShowLogin(true)}
                   title="Sign in or create an account"
                   style={{ background:'rgba(84,233,138,0.12)', border:'1px solid rgba(84,233,138,0.3)', color:C.primary, cursor:'pointer', fontSize:'0.66rem', fontWeight:700, padding:'5px 10px', borderRadius:'6px', flexShrink:0, whiteSpace:'nowrap' }}
                 >
@@ -481,7 +461,7 @@ export default function Layout({ children }) {
               {settingsTrigger}
               {isAnon ? (
                 <button
-                  onClick={() => setSettingsOpen(true)}
+                  onClick={() => setShowLogin(true)}
                   title="Sign in or create an account"
                   style={{ background:'rgba(84,233,138,0.12)', border:'1px solid rgba(84,233,138,0.3)', color:C.primary, cursor:'pointer', fontSize:'0.66rem', fontWeight:700, padding:'5px 10px', borderRadius:'6px', whiteSpace:'nowrap' }}
                 >

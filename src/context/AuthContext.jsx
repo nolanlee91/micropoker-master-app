@@ -13,6 +13,7 @@ const MIGRATION_FLAG = 'supabase-migration-v1'
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined) // undefined = loading
   const [showMigrate, setShowMigrate] = useState(false)
+  const [showLogin, setShowLogin] = useState(false) // on-demand login overlay (header "Sign in")
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -183,6 +184,8 @@ export function AuthProvider({ children }) {
       // Used to decide when to surface the "create account to save your profile" prompt.
       isAnonymous: !!session?.user?.is_anonymous,
       showMigrate,
+      showLogin,
+      setShowLogin,
       migrateData,
       skipMigration,
       signInWithGoogle,

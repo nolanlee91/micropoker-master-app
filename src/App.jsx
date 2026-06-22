@@ -15,7 +15,7 @@ import { useAuth } from './context/AuthContext'
 import { DataProvider, useData } from './context/DataContext'
 
 export default function App() {
-  const { session, showMigrate } = useAuth()
+  const { session, showMigrate, showLogin, setShowLogin } = useAuth()
   const { pathname } = useLocation()
 
   // Public legal/support pages — must be reachable without auth (Stripe + store requirement)
@@ -30,6 +30,10 @@ export default function App() {
   // Onboarding is no longer a gate — it must not block the 60s flow.
   if (session === undefined) return <Spinner />
   if (!session) return <LoginScreen />
+
+  // On-demand login (header "Sign in"): show the real sign-in screen as a dismissible
+  // overlay — keeps the anon session alive underneath until they actually sign in.
+  if (showLogin) return <LoginScreen onClose={() => setShowLogin(false)} />
 
   return (
     <DataProvider>

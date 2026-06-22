@@ -3,8 +3,8 @@ import { Mail } from 'lucide-react'
 import { theme } from '../theme/theme'
 import { useAuth } from '../context/AuthContext'
 
-export default function LoginScreen() {
-  const { signInWithGoogle, signInWithEmail } = useAuth()
+export default function LoginScreen({ onClose }) {
+  const { signInWithGoogle, signInWithEmail, linkGoogle, isAnonymous } = useAuth()
   const [email, setEmail] = useState('')
   const [emailSent, setEmailSent] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -21,6 +21,18 @@ export default function LoginScreen() {
       setError(error.message)
     } else {
       setEmailSent(true)
+    }
+  }
+
+  // Anonymous → LINK so the accumulated leak profile carries over. If that Google
+  // account already belongs to another MPM account, linkIdentity errors → fall back
+  // to a normal fresh sign-in (returning user accessing their existing account).
+  async function handleGoogle() {
+    if (isAnonymous) {
+      const { error } = await linkGoogle()
+      if (error) await signInWithGoogle()
+    } else {
+      await signInWithGoogle()
     }
   }
 
@@ -42,6 +54,15 @@ export default function LoginScreen() {
         flexDirection: 'column',
         gap: theme.spacing.xl,
       }}>
+        {/* Back to app — only when shown as an on-demand overlay (anon clicked "Sign in") */}
+        {onClose && (
+          <button onClick={onClose} style={{
+            alignSelf: 'flex-start', background: 'none', border: 'none',
+            color: theme.colors.onSurfaceVariant, cursor: 'pointer',
+            fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', padding: 0,
+          }}>← Back</button>
+        )}
+
         {/* Branding */}
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '2.2rem', marginBottom: '6px' }}>♠</div>
@@ -71,7 +92,7 @@ export default function LoginScreen() {
         }}>
           {/* Google */}
           <button
-            onClick={signInWithGoogle}
+            onClick={handleGoogle}
             style={{
               display: 'flex',
               alignItems: 'center',

@@ -169,6 +169,15 @@ export function AuthProvider({ children }) {
     })
   }
 
+  // Re-send the signup confirmation email (e.g. it didn't arrive / went to spam).
+  async function resendConfirmation(email) {
+    return supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: window.location.origin },
+    })
+  }
+
   // Set a new password during the recovery flow, then dismiss the recovery screen.
   async function updatePassword(password) {
     const res = await supabase.auth.updateUser({ password })
@@ -230,6 +239,7 @@ export function AuthProvider({ children }) {
       signUpWithPassword,
       signInWithPassword,
       resetPassword,
+      resendConfirmation,
       updatePassword,
       signOut,
       continueAsGuest,

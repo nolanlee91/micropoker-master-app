@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext'
 // Password sign-IN sends no email, so logins scale freely; mail is sent only on
 // account creation (once) and password reset.
 export default function LoginScreen({ onClose }) {
-  const { signUpWithPassword, signInWithPassword, resetPassword, continueAsGuest } = useAuth()
+  const { signUpWithPassword, signInWithPassword, resetPassword, resendConfirmation, continueAsGuest } = useAuth()
   const [mode, setMode] = useState('signin')   // 'signin' | 'signup' | 'forgot'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -58,16 +58,27 @@ export default function LoginScreen({ onClose }) {
     }
 
     if (mode === 'signup') {
-      const { error } = await signUpWithPassword(mail, password)
+      const { data, error } = await signUpWithPassword(mail, password)
       setLoading(false)
       if (error) {
-        // Returning user who hit "Create account" by mistake.
         if (/already|registered|exists/i.test(error.message)) {
-          setError('This email already has an account. Switch to Sign in.')
+          setError('This email already has an account. Switch to Sign in — or use “Forgot password”.')
         } else setError(error.message)
-      } else {
-        setNotice(`Check your inbox — we sent a confirmation link to ${mail}. Click it to activate your account and sign in. Your current data will be there.`)
+        return
       }
+      // No error, but Supabase returns an obfuscated user with NO identities when the
+      // email is already registered (anti-enumeration). Don't claim we sent anything.
+      if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        setError('This email already has an account. Switch to Sign in — or use “Forgot password”.')
+        return
+      }
+      // A session means email confirmation is OFF → already signed in, no email to wait for.
+      if (data?.session) {
+        if (onClose) onClose()
+        return
+      }
+      // No session → confirmation required and on its way.
+      setNotice(`Check your inbox — we sent a confirmation link to ${mail}. Click it to activate your account and sign in. Your current data will be there.`)
     } else {
       const { error } = await signInWithPassword(mail, password)
       setLoading(false)
@@ -152,6 +163,23 @@ export default function LoginScreen({ onClose }) {
               <div style={{ fontSize: '1.6rem', marginBottom: '10px' }}>📬</div>
               <p style={{ ...theme.typography.body, color: theme.colors.onSurface, margin: 0, fontSize: '0.85rem', lineHeight: 1.5 }}>
                 {notice}
+              </p>
+              <p style={{ ...switchTextStyle, marginTop: '12px' }}>
+                Didn’t get it?{' '}
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={async () => {
+                    setLoading(true); setError('')
+                    const { error } = await resendConfirmation(email.trim())
+                    setLoading(false)
+                    setNotice(error ? notice : `Sent again to ${email.trim()}. Check your inbox (and spam).`)
+                    if (error) setError(error.message)
+                  }}
+                  style={linkBtnStyle()}
+                >
+                  Resend email
+                </button>
               </p>
             </div>
           ) : (

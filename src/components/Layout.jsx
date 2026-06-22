@@ -118,16 +118,16 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
 
       {/* Bottom links — Account opens its own page (like Terms/Privacy/Support) so the
           panel stays light. Account is in-app (SPA navigate); legal pages are public. */}
-      <div style={{ marginTop:'16px', paddingTop:'14px', borderTop:`1px solid ${C.border}`, display:'flex', gap:'16px', flexWrap:'wrap' }}>
+      <div style={{ marginTop:'16px', paddingTop:'14px', borderTop:`1px solid ${C.border}`, display:'flex', justifyContent:'space-between', alignItems:'center', gap:'6px' }}>
         <button
           onClick={() => { onClose(); navigate('/account') }}
-          style={{ background:'none', border:'none', padding:0, fontSize:'0.66rem', color:C.text, fontWeight:600, cursor:'pointer' }}
+          style={{ background:'none', border:'none', padding:0, fontSize:'0.62rem', color:C.text, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}
         >
           Account
         </button>
-        <a href="/terms"   style={{ fontSize:'0.66rem', color:C.textMuted, textDecoration:'none' }}>Terms</a>
-        <a href="/privacy" style={{ fontSize:'0.66rem', color:C.textMuted, textDecoration:'none' }}>Privacy</a>
-        <a href="/support" style={{ fontSize:'0.66rem', color:C.textMuted, textDecoration:'none' }}>Support</a>
+        <a href="/terms"   style={{ fontSize:'0.62rem', color:C.textMuted, textDecoration:'none', whiteSpace:'nowrap' }}>Terms</a>
+        <a href="/privacy" style={{ fontSize:'0.62rem', color:C.textMuted, textDecoration:'none', whiteSpace:'nowrap' }}>Privacy</a>
+        <a href="/support" style={{ fontSize:'0.62rem', color:C.textMuted, textDecoration:'none', whiteSpace:'nowrap' }}>Support</a>
       </div>
     </div>
   )

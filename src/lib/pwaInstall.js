@@ -42,5 +42,6 @@ export function useInstall() {
   const standalone = isStandalone()
   const canInstall = !!deferred
   const iosSafari = isIOSSafari()
-  return { standalone, canInstall, iosSafari, show: !standalone && (canInstall || iosSafari), promptInstall }
+  const iosOther = isIOS() && !iosSafari   // iOS in Chrome/Firefox — A2HS only works in Safari
+  return { standalone, canInstall, iosSafari, iosOther, show: !standalone && (canInstall || iosSafari || iosOther), promptInstall }
 }

@@ -101,6 +101,10 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
                 Must be open in <span style={{ color:C.text, fontWeight:600 }}>Safari</span> — Chrome and in-app browsers don't show this option.
               </div>
             </div>
+          ) : install.iosOther ? (
+            <div style={{ fontSize:'0.62rem', color:C.textMuted, lineHeight:1.55 }}>
+              Open this page in <span style={{ color:C.text, fontWeight:600 }}>Safari</span> to add it to your home screen.
+            </div>
           ) : (
             <button
               onClick={() => install.promptInstall()}

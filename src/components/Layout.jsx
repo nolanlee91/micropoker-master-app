@@ -117,9 +117,22 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
         <div style={{ marginTop:'14px' }}>
           {lbl('Install app')}
           {install.iosSafari ? (
-            <div style={{ fontSize:'0.62rem', color:C.textMuted, lineHeight:1.6, display:'flex', alignItems:'center', gap:'4px', flexWrap:'wrap' }}>
-              Tap <Share size={12} style={{ verticalAlign:'middle' }} /> Share, then
-              <span style={{ color:C.text, fontWeight:600 }}>Add to Home Screen</span>.
+            <div style={{ fontSize:'0.62rem', color:C.textMuted, lineHeight:1.55, display:'flex', flexDirection:'column', gap:'6px' }}>
+              <div style={{ display:'flex', gap:'7px' }}>
+                <span style={{ color:C.primary, fontWeight:700, flexShrink:0 }}>1.</span>
+                <span>Tap the <Share size={11} style={{ verticalAlign:'-1px' }} /> <span style={{ color:C.text, fontWeight:600 }}>Share</span> button in Safari's toolbar.</span>
+              </div>
+              <div style={{ display:'flex', gap:'7px' }}>
+                <span style={{ color:C.primary, fontWeight:700, flexShrink:0 }}>2.</span>
+                <span>Scroll down and tap <span style={{ color:C.text, fontWeight:600 }}>Add to Home Screen</span>.</span>
+              </div>
+              <div style={{ display:'flex', gap:'7px' }}>
+                <span style={{ color:C.primary, fontWeight:700, flexShrink:0 }}>3.</span>
+                <span>Tap <span style={{ color:C.text, fontWeight:600 }}>Add</span> — the icon lands on your home screen.</span>
+              </div>
+              <div style={{ marginTop:'2px', fontSize:'0.58rem', opacity:0.85 }}>
+                Must be open in <span style={{ color:C.text, fontWeight:600 }}>Safari</span> — Chrome and in-app browsers don't show this option.
+              </div>
             </div>
           ) : (
             <button
@@ -136,32 +149,7 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
         </div>
       )}
 
-      {/* Subscription — Pro users manage billing on Stripe's hosted portal */}
-      {isPro && !isAnon && (
-        <div style={{ marginTop:'16px', paddingTop:'14px', borderTop:`1px solid ${C.border}` }}>
-          {lbl('Subscription')}
-          <button
-            onClick={handleManageSubscription}
-            disabled={portalLoading}
-            style={{
-              width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'7px',
-              padding:'9px', borderRadius:'8px', border:`1px solid ${C.border}`, background:C.surfaceHigh,
-              color:C.text, fontSize:'0.68rem', fontWeight:600, cursor: portalLoading ? 'not-allowed' : 'pointer',
-              opacity: portalLoading ? 0.6 : 1,
-            }}
-          >
-            <CreditCard size={13} /> {portalLoading ? 'Opening…' : 'Manage subscription'}
-          </button>
-          <div style={{ fontSize:'0.58rem', color:C.textMuted, marginTop:'6px', lineHeight:1.5 }}>
-            Update payment, view invoices, or cancel — on Stripe.
-          </div>
-          {portalError && (
-            <div style={{ fontSize:'0.6rem', color:'#f47067', marginTop:'6px' }}>{portalError}</div>
-          )}
-        </div>
-      )}
-
-      {/* Account — who you're signed in as + delete (App Store requirement) */}
+      {/* Account — identity, billing, and deletion grouped in one bottom section */}
       <div style={{ marginTop:'16px', paddingTop:'14px', borderTop:`1px solid ${C.border}` }}>
         {lbl('Account')}
         {isAnon ? (
@@ -184,6 +172,28 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
         <div style={{ fontSize:'0.66rem', color:C.textMuted, marginBottom:'10px', wordBreak:'break-all', lineHeight:1.5 }}>
           {email ? <>Signed in as <span style={{ color:C.text }}>{email}</span></> : 'Signed in'}
         </div>
+        {isPro && (
+          <div style={{ marginBottom:'12px' }}>
+            <button
+              onClick={handleManageSubscription}
+              disabled={portalLoading}
+              style={{
+                width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'7px',
+                padding:'9px', borderRadius:'8px', border:`1px solid ${C.border}`, background:C.surfaceHigh,
+                color:C.text, fontSize:'0.68rem', fontWeight:600, cursor: portalLoading ? 'not-allowed' : 'pointer',
+                opacity: portalLoading ? 0.6 : 1,
+              }}
+            >
+              <CreditCard size={13} /> {portalLoading ? 'Opening…' : 'Manage subscription'}
+            </button>
+            <div style={{ fontSize:'0.58rem', color:C.textMuted, marginTop:'6px', lineHeight:1.5 }}>
+              Update payment, view invoices, or cancel — on Stripe.
+            </div>
+            {portalError && (
+              <div style={{ fontSize:'0.6rem', color:'#f47067', marginTop:'6px' }}>{portalError}</div>
+            )}
+          </div>
+        )}
         {!confirming ? (
           <button
             onClick={() => { setConfirming(true); setDelError('') }}

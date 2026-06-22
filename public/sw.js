@@ -3,7 +3,10 @@
 // Hard rule: never cache /api/* or any cross-origin request (Supabase, Stripe,
 // Gemini, Google Fonts) — those must always hit the network.
 
-const VERSION = 'mpm-v1'
+// Bump this string on each release so the new service worker activates and the
+// `activate` handler purges the old cache — otherwise an installed PWA can keep
+// serving a stale JS bundle even after a fresh deploy.
+const VERSION = 'mpm-v2'
 const CORE = ['/', '/manifest.webmanifest', '/icon.svg', '/pwa-192.png', '/pwa-512.png', '/apple-touch-icon.png']
 
 self.addEventListener('install', (e) => {

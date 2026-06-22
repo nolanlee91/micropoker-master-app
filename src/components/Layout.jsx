@@ -149,8 +149,8 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
         </div>
       )}
 
-      {/* Account — identity, billing, and deletion grouped in one bottom section */}
-      <div style={{ marginTop:'16px', paddingTop:'14px', borderTop:`1px solid ${C.border}` }}>
+      {/* Account — identity, billing, and deletion in one distinct boxed card */}
+      <div style={{ marginTop:'16px', padding:'14px', borderRadius:'10px', background:C.surface, border:`1px solid ${C.border}` }}>
         {lbl('Account')}
         {isAnon ? (
           <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>

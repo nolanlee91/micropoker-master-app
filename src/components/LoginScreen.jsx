@@ -5,12 +5,28 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 
 export default function LoginScreen({ onClose }) {
-  const { signInWithGoogle, signInWithEmail, linkGoogle, isAnonymous } = useAuth()
+  const { signInWithGoogle, signInWithEmail, linkGoogle, isAnonymous, continueAsGuest } = useAuth()
   const [email, setEmail] = useState('')
   const [emailSent, setEmailSent] = useState(false)
   const [loading, setLoading] = useState(false)
   const [googleBusy, setGoogleBusy] = useState(false)
+  const [guestBusy, setGuestBusy] = useState(false)
   const [error, setError] = useState('')
+
+  // "Continue as guest" — keep the user in the app with no login wall.
+  // Overlay mode (came from the app): just dismiss, preserving the live guest session.
+  // Login gate (after sign-out / failed anon): start a fresh guest session.
+  async function handleGuest() {
+    if (guestBusy) return
+    if (onClose) { onClose(); return }
+    setGuestBusy(true)
+    const { error } = await continueAsGuest()
+    if (error) {
+      setGuestBusy(false)
+      setError(error.message || 'Could not continue as guest. Please try again.')
+    }
+    // success → auth state updates → this screen unmounts into the app
+  }
 
   async function handleEmailSubmit(e) {
     e.preventDefault()
@@ -75,14 +91,21 @@ export default function LoginScreen({ onClose }) {
         flexDirection: 'column',
         gap: theme.spacing.xl,
       }}>
-        {/* Back to app — only when shown as an on-demand overlay (anon clicked "Sign in") */}
-        {onClose && (
-          <button onClick={onClose} style={{
+        {/* Continue as guest — single escape hatch (replaces Back). Keeps the user in
+            the app without an account, whether they reached this from the app (overlay)
+            or by signing out (login gate). No login wall. */}
+        <button
+          onClick={handleGuest}
+          disabled={guestBusy}
+          style={{
             alignSelf: 'flex-start', background: 'none', border: 'none',
-            color: theme.colors.onSurfaceVariant, cursor: 'pointer',
+            color: theme.colors.onSurfaceVariant, cursor: guestBusy ? 'wait' : 'pointer',
             fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', padding: 0,
-          }}>← Back</button>
-        )}
+            opacity: guestBusy ? 0.6 : 1,
+          }}
+        >
+          {guestBusy ? 'Connecting…' : 'Continue as guest'}
+        </button>
 
         {/* Branding */}
         <div style={{ textAlign: 'center' }}>

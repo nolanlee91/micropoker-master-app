@@ -176,6 +176,12 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut()
   }
 
+  // Start a fresh guest session — used by "Continue as guest" so signing out doesn't
+  // dead-end on a login gate; the app stays usable with no login wall.
+  async function continueAsGuest() {
+    return supabase.auth.signInAnonymously()
+  }
+
   // Permanently delete the account + all cloud data (App Store requirement).
   // The RPC deletes auth.users → cascades to profiles/sessions/hand_history.
   async function deleteAccount() {
@@ -219,6 +225,7 @@ export function AuthProvider({ children }) {
       signInWithEmail,
       linkGoogle,
       signOut,
+      continueAsGuest,
       deleteAccount,
     }}>
       {children}

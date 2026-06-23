@@ -166,6 +166,10 @@ export default function Account() {
             </Section>
           </div>
         )}
+
+        <div style={{ marginTop:'28px', textAlign:'center', fontSize:'0.66rem', color:C.textMuted }}>
+          MicroPoker Master · v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}
+        </div>
       </div>
 
       {showPaywall && (

@@ -4,6 +4,7 @@ import { ArrowLeft, CreditCard } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { usePro } from '../hooks/usePro'
 import { openBillingPortal } from '../lib/portal'
+import Paywall from './Paywall'
 
 // Dedicated Account page (its own screen, reached from the Preferences panel's
 // "Account" link) — so identity, billing and deletion live here instead of
@@ -25,7 +26,7 @@ function Section({ title, children }) {
 export default function Account() {
   const navigate = useNavigate()
   const { deleteAccount, session, setShowLogin } = useAuth()
-  const { isPro } = usePro()
+  const { isPro, refresh: refreshPro } = usePro()
   const isAnon = !!session?.user?.is_anonymous
   const email  = session?.user?.email || ''
 
@@ -34,6 +35,7 @@ export default function Account() {
   const [delError,      setDelError]      = useState('')
   const [portalLoading, setPortalLoading] = useState(false)
   const [portalError,   setPortalError]   = useState('')
+  const [showPaywall,   setShowPaywall]   = useState(false)
 
   async function handleManageSubscription() {
     setPortalLoading(true)
@@ -87,7 +89,7 @@ export default function Account() {
               <div style={{ fontSize:'0.9rem', color:C.text, wordBreak:'break-all' }}>{email || 'Signed in'}</div>
             </Section>
 
-            {isPro && (
+            {isPro ? (
               <Section title="Subscription">
                 <button
                   onClick={handleManageSubscription}
@@ -105,6 +107,22 @@ export default function Account() {
                   Update payment, view invoices, or cancel — on Stripe.
                 </div>
                 {portalError && <div style={{ fontSize:'0.76rem', color:C.red, marginTop:'8px' }}>{portalError}</div>}
+              </Section>
+            ) : (
+              // A direct path to buy Pro that doesn't depend on first logging hands —
+              // the Leak Profile/Quiz paywalls only appear once there's data, so a brand-new
+              // account had no way to subscribe before reaching this page.
+              <Section title="Subscription">
+                <div style={{ fontSize:'0.82rem', color:C.text, fontWeight:600, marginBottom:'4px' }}>You're on the free plan</div>
+                <div style={{ fontSize:'0.74rem', color:C.textMuted, lineHeight:1.55, marginBottom:'12px' }}>
+                  Unlock your full Leak Profile, the $ cost of each leak, and a step-by-step fix plan built from your own hands.
+                </div>
+                <button
+                  onClick={() => setShowPaywall(true)}
+                  style={{ width:'100%', padding:'11px', borderRadius:'9px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontSize:'0.82rem', fontWeight:800, cursor:'pointer' }}
+                >
+                  Go Pro
+                </button>
               </Section>
             )}
 
@@ -149,6 +167,10 @@ export default function Account() {
           </div>
         )}
       </div>
+
+      {showPaywall && (
+        <Paywall onClose={() => setShowPaywall(false)} onRestore={refreshPro} />
+      )}
     </div>
   )
 }

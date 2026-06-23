@@ -218,6 +218,10 @@ export default async function handler(req, res) {
   // Hoisted so the Pro-only entitlement gate below can read it AFTER this block.
   // Stays false unless positively verified → fail closed for Pro-only modes.
   let isProUser = false
+  // The credit we RESERVED for this call (a bump_* increment). If the model then
+  // fails, the catch refunds it via this RPC so a Gemini timeout never burns a
+  // user's quota. Stays null when nothing was charged (no service role / fail-open).
+  let pendingRefundRpc = null
   if (SERVICE_ROLE) {
     try {
       const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
@@ -270,40 +274,49 @@ export default async function handler(req, res) {
         const tCap = user.is_anonymous ? CAP_T_ANON : isProUser ? CAP_T_PRO : CAP_T_FREE
         const { data: tCount, error: tErr } = await admin.rpc('bump_transcribe_usage', { p_user: user.id })
         if (!tErr && typeof tCount === 'number' && tCount > tCap) {
+          await admin.rpc('refund_transcribe_usage', { p_user: user.id }).catch(() => {})
           return res.status(429).json({
             error: user.is_anonymous
               ? `Voice note limit reached (${tCap}/day). Create a free account for more.`
               : `Voice note limit reached (${tCap}/day). Come back tomorrow.`,
           })
         }
+        if (!tErr) pendingRefundRpc = 'refund_transcribe_usage'
       } else if (isAnalysis) {
         // DEEP analysis (gemini-2.5-pro). Pro = per-month counter; anon/free = a
         // lifetime counter (the trial doesn't refill). Pick the counter by tier.
+        // Reserve a credit now; refund it on reject (over cap) or model failure.
         if (isProUser) {
           const { data: count, error: capErr } = await admin.rpc('bump_coach_analysis_month', { p_user: user.id })
           if (!capErr && typeof count === 'number' && count > CAP_ANALYSIS_PRO_MO) {
+            await admin.rpc('refund_coach_analysis_month', { p_user: user.id }).catch(() => {})
             return res.status(429).json({ error: `You've used all ${CAP_ANALYSIS_PRO_MO} hand analyses this month. Your quota resets on the 1st.` })
           }
+          if (!capErr) pendingRefundRpc = 'refund_coach_analysis_month'
         } else {
           const { data: count, error: capErr } = await admin.rpc('bump_coach_analysis_total', { p_user: user.id })
           const cap = user.is_anonymous ? CAP_ANALYSIS_ANON : CAP_ANALYSIS_FREE
           if (!capErr && typeof count === 'number' && count > cap) {
+            await admin.rpc('refund_coach_analysis_total', { p_user: user.id }).catch(() => {})
             const msg = user.is_anonymous
               ? `You've used your ${cap} free analyses. Create a free account for ${CAP_ANALYSIS_FREE} more — it's free.`
               : `You've used all ${cap} free hand analyses. Go Pro for ${CAP_ANALYSIS_PRO_MO} a month — full Leak Profile, fix plans and debriefs included.`
             return res.status(429).json({ error: msg })
           }
+          if (!capErr) pendingRefundRpc = 'refund_coach_analysis_total'
         }
       } else {
         // Cheap flash turns (follow-up / fix plan / debrief) → generous daily cap.
         const cap = user.is_anonymous ? CAP_FLASH_ANON : isProUser ? CAP_FLASH_PRO : CAP_FLASH_FREE
         const { data: count, error: capErr } = await admin.rpc('bump_coach_usage', { p_user: user.id })
         if (!capErr && typeof count === 'number' && count > cap) {
+          await admin.rpc('refund_coach_usage', { p_user: user.id }).catch(() => {})
           const msg = user.is_anonymous
             ? `You've hit today's free limit. Create a free account to keep going — it's free.`
             : `Daily limit reached (${cap}/day). Come back tomorrow — this keeps the AI fast for everyone.`
           return res.status(429).json({ error: msg })
         }
+        if (!capErr) pendingRefundRpc = 'refund_coach_usage'
       }
     } catch (e) {
       console.warn('[coach] usage cap skipped:', e.message)
@@ -709,6 +722,11 @@ CRITICAL: Return ONLY a JSON object. No markdown, no code fences, no backticks:
 
   } catch (err) {
     console.error('[coach] error:', err.message)
+    // The model failed AFTER we reserved a credit → refund it (no value delivered),
+    // so a Gemini timeout/500 never permanently burns a user's quota.
+    if (pendingRefundRpc && SERVICE_ROLE) {
+      try { await createClient(SUPABASE_URL, SERVICE_ROLE).rpc(pendingRefundRpc, { p_user: user.id }) } catch {}
+    }
     return res.status(500).json({ error: err.message || 'Coach unavailable. Please try again.' })
   }
 }

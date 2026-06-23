@@ -39,38 +39,74 @@ export default async function handler(req, res) {
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
 
+  // We can't authenticate the TARGET here — right after signUp (email confirmation
+  // is mandatory) it has no session yet, only the guest token exists. So we defend
+  // ownership with three checks that together make it impractical to dump data into
+  // an account you don't own: the target must (a) exist, (b) be freshly created — the
+  // legit call happens seconds after signUp — and (c) be empty (below).
   try {
-    // Guard: only migrate into a brand-new, empty account.
-    const [{ count: tHands }, { count: tSessions }] = await Promise.all([
+    const { data: tu, error: tuErr } = await admin.auth.admin.getUserById(targetUserId)
+    if (tuErr || !tu?.user) return res.status(404).json({ error: 'target not found' })
+    const ageMs = Date.now() - new Date(tu.user.created_at).getTime()
+    if (!(ageMs >= 0) || ageMs > 15 * 60 * 1000) {
+      return res.status(403).json({ error: 'target not eligible for migration' })
+    }
+  } catch (e) {
+    console.error('[migrate-guest-data] target lookup failed:', e.message)
+    return res.status(500).json({ error: 'target lookup failed' })
+  }
+
+  try {
+    // Guard: only migrate into a brand-new, EMPTY account. Supabase returns { error }
+    // without throwing — if we ignored it, a failed count would read as "empty" and
+    // we'd risk dumping into a non-empty account. Fail closed on a precheck error.
+    const [hRes, sRes] = await Promise.all([
       admin.from('hand_history').select('id', { count: 'exact', head: true }).eq('user_id', targetUserId),
       admin.from('sessions').select('id', { count: 'exact', head: true }).eq('user_id', targetUserId),
     ])
-    if ((tHands || 0) > 0 || (tSessions || 0) > 0) {
+    if (hRes.error || sRes.error) {
+      console.error('[migrate-guest-data] empty-check failed:', hRes.error?.message || sRes.error?.message)
+      return res.status(500).json({ error: 'precheck failed' })
+    }
+    if ((hRes.count || 0) > 0 || (sRes.count || 0) > 0) {
       return res.status(200).json({ ok: true, skipped: 'target not empty' })
     }
 
-    // Copy sessions first, mapping old id → new id for the hand FK.
-    const { data: sessions } = await admin.from('sessions').select('*').eq('user_id', sourceId)
+    // Read source data — abort on a read error (don't report a hollow success).
+    const { data: sessions, error: sReadErr } = await admin.from('sessions').select('*').eq('user_id', sourceId)
+    if (sReadErr) { console.error('[migrate-guest-data] read sessions failed:', sReadErr.message); return res.status(500).json({ error: 'read failed' }) }
+    const { data: hands, error: hReadErr } = await admin.from('hand_history').select('*').eq('user_id', sourceId)
+    if (hReadErr) { console.error('[migrate-guest-data] read hands failed:', hReadErr.message); return res.status(500).json({ error: 'read failed' }) }
+
+    // Copy sessions first, mapping old id → new id for the hand FK. Track per-row
+    // insert failures so the response reports what actually moved (no false success).
     const idMap = {}
+    let sessFail = 0, handFail = 0
     for (const s of (sessions || [])) {
       const { id, user_id, ...rest } = s
-      const { data: ins } = await admin
+      const { data: ins, error } = await admin
         .from('sessions').insert({ ...rest, user_id: targetUserId }).select('id').single()
+      if (error) { sessFail++; continue }
       if (ins) idMap[id] = ins.id
     }
 
     // Copy hands, remapping session_id.
-    const { data: hands } = await admin.from('hand_history').select('*').eq('user_id', sourceId)
     for (const h of (hands || [])) {
       const { id, user_id, session_id, ...rest } = h
-      await admin.from('hand_history').insert({
+      const { error } = await admin.from('hand_history').insert({
         ...rest,
         user_id: targetUserId,
         session_id: session_id ? (idMap[session_id] || null) : null,
       })
+      if (error) handFail++
     }
 
-    return res.status(200).json({ ok: true, sessions: sessions?.length || 0, hands: hands?.length || 0 })
+    return res.status(200).json({
+      ok: true,
+      sessions: (sessions?.length || 0) - sessFail,
+      hands: (hands?.length || 0) - handFail,
+      ...(sessFail || handFail ? { failed: { sessions: sessFail, hands: handFail } } : {}),
+    })
   } catch (err) {
     console.error('[migrate-guest-data] error:', err.message)
     return res.status(500).json({ error: err.message })

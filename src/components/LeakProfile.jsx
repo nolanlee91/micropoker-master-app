@@ -139,14 +139,26 @@ export default function LeakProfile() {
   const hasTrends = Object.keys(trends).length > 0
 
   // Returning from Stripe Checkout (success_url = /leaks?checkout=success):
-  // the webhook may have just granted Pro, so re-read entitlement + clean the URL.
+  // the webhook grants Pro ASYNCHRONOUSLY — it can land a few seconds AFTER the
+  // redirect. A single refresh would read "not Pro yet" and leave the buyer staring
+  // at the paywall (they paid!). So POLL: re-check every 2s until Pro flips true or
+  // we give up (~24s). Stripe webhooks usually land in <5s; the longer tail covers
+  // a slow/retried delivery.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.get('checkout') === 'success') {
-      refreshPro()
-      setShowPaywall(false)
-      window.history.replaceState({}, '', window.location.pathname)
+    if (params.get('checkout') !== 'success') return
+    setShowPaywall(false)
+    window.history.replaceState({}, '', window.location.pathname)
+
+    let cancelled = false
+    let tries = 0
+    const tick = async () => {
+      const pro = await refreshPro()
+      if (cancelled || pro) return
+      if (++tries < 12) setTimeout(tick, 2000)
     }
+    tick()
+    return () => { cancelled = true }
   }, [refreshPro])
 
   // Open the email/password sign-up overlay. signUpWithPassword links the new account

@@ -20,10 +20,12 @@ export function usePro() {
   const [isPro, setIsPro]     = useState(proCache.value)
   const [loading, setLoading] = useState(!proCache.known)
 
+  // Returns the resolved entitlement so callers can poll until it flips true
+  // (e.g. right after Stripe Checkout, while the webhook is still writing the row).
   const refresh = useCallback(async () => {
     if (!proCache.known) setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { proCache = { value: false, known: true }; setIsPro(false); setLoading(false); return }
+    if (!user) { proCache = { value: false, known: true }; setIsPro(false); setLoading(false); return false }
 
     const { data } = await supabase
       .from('subscriptions')
@@ -37,6 +39,7 @@ export function usePro() {
     proCache = { value: result, known: true }
     setIsPro(result)
     setLoading(false)
+    return result
   }, [])
 
   useEffect(() => {

@@ -141,11 +141,15 @@ export function AuthProvider({ children }) {
     const guestToken = guestId ? guest.access_token : null
 
     // Sign up on an ISOLATED, sessionless client. Calling signUp() on the main client
-    // (which holds the anonymous session) makes GoTrue treat it as an email change on
-    // the guest user — and that confirmation send crashes ("unexpected_failure: Error
-    // sending confirmation email"). A client with no session does a clean signUp, so the
-    // standard "Confirm signup" email is sent. The main client keeps the guest session
-    // alive (token still valid) so we can migrate the guest's data below.
+    // (which holds the anonymous session) makes GoTrue act on the CURRENT anon user
+    // instead of creating a fresh one — we want a brand-new account whose id differs
+    // from the guest's, so the migrate step below has a distinct source→target. The
+    // sessionless client guarantees that, and keeps the guest session alive on the
+    // main client (token still valid) so we can copy the guest's data afterward.
+    //
+    // (History note: the old "Error sending confirmation email" 500 at signup was NOT
+    // this — it was MailerSend rejecting the confirmation email. Switching SMTP to
+    // Brevo fixed it. This sessionless client is about account identity, not email.)
     const fresh = createClient(
       import.meta.env.VITE_SUPABASE_URL,
       import.meta.env.VITE_SUPABASE_ANON_KEY,

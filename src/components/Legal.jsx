@@ -15,7 +15,7 @@ const APP_NAME      = 'MicroPoker Master'
 const COMPANY       = 'MicroPoker Master'
 const CONTACT_EMAIL = 'support@micropokermaster.com'
 const EFFECTIVE     = 'June 19, 2026'
-const GOVERNING_LAW = '[your country or state]'  // ← set this
+const GOVERNING_LAW = 'the Province of British Columbia, Canada'
 
 const C = {
   bg: '#0B0E14', surface: '#161B22', border: '#21262D',

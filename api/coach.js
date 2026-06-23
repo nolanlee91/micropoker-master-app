@@ -193,14 +193,20 @@ export default async function handler(req, res) {
   // Best-effort: if the counter/lookup is unavailable, fail open (don't block a
   // paying user over an infra hiccup).
   const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const CAP_ANON = parseInt(process.env.COACH_CAP_ANON || '2', 10)
-  // Free analysis is a TASTE that feeds the funnel, not a daily utility — Pro's real
-  // value is the whole coaching layer (Leak Profile + Debrief + Drills), not call
-  // volume. So the steady free cap is lean (3/day), but a brand-new free account
-  // gets a generous FIRST day to wow them before the wall appears.
-  const CAP_FREE      = parseInt(process.env.COACH_CAP_FREE || process.env.COACH_DAILY_CAP || '3', 10)
-  const CAP_FREE_DAY1 = parseInt(process.env.COACH_CAP_FREE_DAY1 || '8', 10)
-  const CAP_PRO  = parseInt(process.env.COACH_CAP_PRO  || '20', 10)
+  // Quota v2 — the EXPENSIVE deep analysis (gemini-2.5-pro, ~$0.09/call) is metered
+  // separately from the cheap flash calls (follow-up/fix/debrief). Deep analysis:
+  //   • anon / free = a LIFETIME trial (no reset) — a taste that feeds the funnel;
+  //   • pro = 60 per CALENDAR MONTH (resets on the 1st), burst-friendly for a player
+  //     who reviews a whole session in one sitting.
+  const CAP_ANALYSIS_ANON   = parseInt(process.env.COACH_CAP_ANALYSIS_ANON    || '3',  10) // lifetime
+  const CAP_ANALYSIS_FREE   = parseInt(process.env.COACH_CAP_ANALYSIS_FREE    || '10', 10) // lifetime
+  const CAP_ANALYSIS_PRO_MO = parseInt(process.env.COACH_CAP_ANALYSIS_PRO_MO  || '60', 10) // per calendar month
+  // Flash calls (follow-up + fix plan + debrief) are cheap → a generous DAILY cap,
+  // purely anti-abuse. (Fix/debrief are Pro-only anyway, so for anon/free this is
+  // effectively the follow-up cap.)
+  const CAP_FLASH_ANON = parseInt(process.env.COACH_CAP_FLASH_ANON || '5',  10) // /day
+  const CAP_FLASH_FREE = parseInt(process.env.COACH_CAP_FLASH_FREE || '10', 10) // /day
+  const CAP_FLASH_PRO  = parseInt(process.env.COACH_CAP_FLASH_PRO  || '30', 10) // /day
   // Per-IP cap targets the ONE real farming vector: rotating throwaway ANONYMOUS
   // accounts on a single device/IP to re-roll the free Pro demo. Applied to anon
   // ONLY, so real users behind shared NAT/CGNAT are never throttled.
@@ -270,33 +276,32 @@ export default async function handler(req, res) {
               : `Voice note limit reached (${tCap}/day). Come back tomorrow.`,
           })
         }
-      } else {
-        // Tiered analysis cap. Activation bonus keyed on the user's FIRST day USING the
-        // coach (not signup): a brand-new free user gets a generous first day, then
-        // settles to the lean steady cap from their 2nd active day on. "First usage day"
-        // = no coach_usage row exists for any prior day (today's row may already exist).
-        let freeCap = CAP_FREE
-        if (!user.is_anonymous && !isProUser) {
-          try {
-            const todayUTC = new Date().toISOString().slice(0, 10)
-            const { data: prior } = await admin
-              .from('coach_usage')
-              .select('day')
-              .eq('user_id', user.id)
-              .lt('day', todayUTC)
-              .limit(1)
-            if (!prior || prior.length === 0) freeCap = CAP_FREE_DAY1
-          } catch {}
+      } else if (isAnalysis) {
+        // DEEP analysis (gemini-2.5-pro). Pro = per-month counter; anon/free = a
+        // lifetime counter (the trial doesn't refill). Pick the counter by tier.
+        if (isProUser) {
+          const { data: count, error: capErr } = await admin.rpc('bump_coach_analysis_month', { p_user: user.id })
+          if (!capErr && typeof count === 'number' && count > CAP_ANALYSIS_PRO_MO) {
+            return res.status(429).json({ error: `You've used all ${CAP_ANALYSIS_PRO_MO} hand analyses this month. Your quota resets on the 1st.` })
+          }
+        } else {
+          const { data: count, error: capErr } = await admin.rpc('bump_coach_analysis_total', { p_user: user.id })
+          const cap = user.is_anonymous ? CAP_ANALYSIS_ANON : CAP_ANALYSIS_FREE
+          if (!capErr && typeof count === 'number' && count > cap) {
+            const msg = user.is_anonymous
+              ? `You've used your ${cap} free analyses. Create a free account for ${CAP_ANALYSIS_FREE} more — it's free.`
+              : `You've used all ${cap} free hand analyses. Go Pro for ${CAP_ANALYSIS_PRO_MO} a month — full Leak Profile, fix plans and debriefs included.`
+            return res.status(429).json({ error: msg })
+          }
         }
-        const cap = user.is_anonymous ? CAP_ANON : isProUser ? CAP_PRO : freeCap
-
+      } else {
+        // Cheap flash turns (follow-up / fix plan / debrief) → generous daily cap.
+        const cap = user.is_anonymous ? CAP_FLASH_ANON : isProUser ? CAP_FLASH_PRO : CAP_FLASH_FREE
         const { data: count, error: capErr } = await admin.rpc('bump_coach_usage', { p_user: user.id })
         if (!capErr && typeof count === 'number' && count > cap) {
-          // "requests" not "hands": the cap counts every AI call (analysis + follow-up
-          // + fix plan + debrief), so a user can hit it without analyzing that many hands.
           const msg = user.is_anonymous
-            ? `You've used your ${cap} free AI requests for today. Create a free account to keep going — it's free.`
-            : `Daily limit reached (${cap} AI requests). Come back tomorrow — this keeps the AI fast for everyone.`
+            ? `You've hit today's free limit. Create a free account to keep going — it's free.`
+            : `Daily limit reached (${cap}/day). Come back tomorrow — this keeps the AI fast for everyone.`
           return res.status(429).json({ error: msg })
         }
       }
@@ -529,6 +534,13 @@ CRITICAL: Return ONLY a JSON object. No markdown, no code fences, no backticks:
   // simpler turns, far cheaper, fast.
   const model = isAnalysis ? 'gemini-2.5-pro' : 'gemini-2.5-flash'
 
+  // Per-mode token budgets. thinkingBudget caps INTERNAL reasoning only — it does NOT
+  // shorten the visible answer (maxOutputTokens leaves a comfortable buffer on top).
+  // Only deep analysis needs heavy reasoning; flash modes cap thinking so dynamic
+  // thinking (~8k) can't quietly inflate cost. Transcribe needs no reasoning at all.
+  const thinkBudget = isAnalysis ? 8192 : isTranscribe ? 0 : isFollowUp ? 1024 : 2048
+  const maxOut      = isAnalysis ? 9000 : isTranscribe ? 2048 : isFollowUp ? 2048 : 3584
+
   try {
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
@@ -539,16 +551,11 @@ CRITICAL: Return ONLY a JSON object. No markdown, no code fences, no backticks:
           system_instruction: { parts: [{ text: systemText }] },
           contents,
           generationConfig: {
-            // Both 2.5 models are *thinking* models: reasoning tokens count toward
-            // maxOutputTokens. The visible JSON is small (~300 tokens); the rest of
-            // the ceiling is hidden reasoning. Analysis caps thinking at 8192 (plenty
-            // for board-reading + action reconstruction) and sets maxOutputTokens to
-            // 9000 = thinking budget + a ~700-token buffer for the JSON, so a heavy
-            // hand still can't truncate mid-field, while the pathological cost tail
-            // (was up to 16384 out → ~$0.167/call) is bounded to ~$0.09. Follow-up on
-            // flash is already cheap and keeps dynamic thinking to avoid clipping debriefs.
-            maxOutputTokens: isAnalysis ? 9000 : 8192,
-            ...(isAnalysis ? { thinkingConfig: { thinkingBudget: 8192 } } : {}),
+            // Both 2.5 models are *thinking* models. maxOut = thinkBudget + a visible-
+            // answer buffer (see above), so capping thinking bounds cost without
+            // truncating the answer.
+            maxOutputTokens: maxOut,
+            thinkingConfig: { thinkingBudget: thinkBudget },
             // Analysis at temp 0 → far less run-to-run drift in the verdict, the
             // reasoning, and the EV number for the same hand (was 0.2 → noticeably
             // different explanations each call). Follow-up keeps a little warmth.
@@ -568,6 +575,22 @@ CRITICAL: Return ONLY a JSON object. No markdown, no code fences, no backticks:
     // the number to watch if tuning thinkingBudget; `output` is the visible JSON.
     const u = data.usageMetadata || {}
     console.log('[coach] tokens:', { model, prompt: u.promptTokenCount, thinking: u.thoughtsTokenCount, output: u.candidatesTokenCount, total: u.totalTokenCount })
+
+    // Persist aggregated token usage (NO hand content) so we can compute real p50/p95
+    // cost per mode/model/tier after 30 days and tune caps/pricing from data. Best-effort.
+    if (SERVICE_ROLE) {
+      const mode = isAnalysis ? 'analysis' : isTranscribe ? 'transcribe'
+                 : isLeakFix ? 'leak_fix' : isDebrief ? 'session_debrief' : 'follow_up'
+      const tier = user.is_anonymous ? 'anon' : isProUser ? 'pro' : 'free'
+      try {
+        await createClient(SUPABASE_URL, SERVICE_ROLE).from('usage_events').insert({
+          user_id: user.id, tier, mode, model,
+          prompt_tokens:   u.promptTokenCount   ?? null,
+          thinking_tokens: u.thoughtsTokenCount ?? null,
+          output_tokens:   u.candidatesTokenCount ?? null,
+        })
+      } catch { /* logging must never break a response */ }
+    }
 
     const raw = data.candidates?.[0]?.content?.parts?.[0]?.text
     if (!raw) throw new Error('Empty response from Gemini')

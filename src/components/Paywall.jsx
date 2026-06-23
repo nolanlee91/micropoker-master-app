@@ -18,8 +18,8 @@ const C = {
 const PERKS = [
   'Full Leak Profile — every leak ranked by $ lost',
   'The $ cost of each leak (not blurred)',
-  'A step-by-step fix plan built from your own hands',
-  'Deep follow-up coaching on your leaks',
+  '60 hand analyses every month',
+  'Follow-ups, fix plans & session debriefs included',
   'Watch your leaks shrink over time',
 ]
 
@@ -122,7 +122,7 @@ export default function Paywall({ onClose, onRestore }) {
         {/* Honest quota disclosure — no surprise wall, no bait. Steady free number
             stated plainly; the bigger first day is framed as a bonus, not the headline. */}
         <div style={{ fontSize:'0.62rem', color:C.textMuted, textAlign:'center', lineHeight:1.5 }}>
-          Free includes 3 AI requests/day (8 on your first day). Pro raises this to 20/day, plus everything above.
+          Free: 10 hand analyses to get started. Pro: 60 hand analyses every month (resets on the 1st), plus follow-ups, fix plans &amp; debriefs.
         </div>
 
         {/* Trust row — real signals only: Stripe-secured, no lock-in, restorable. */}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { BrainCircuit, Check, X, ShieldCheck, RotateCcw } from 'lucide-react'
 import { startCheckout } from '../lib/checkout'
+import { useAuth } from '../context/AuthContext'
 
 // Paywall for Pro (the Leak Profile). Real billing via Stripe Checkout — the
 // button redirects to Stripe's hosted page; the webhook grants Pro on success.
@@ -28,6 +29,7 @@ const PLANS = {
 }
 
 export default function Paywall({ onClose, onRestore }) {
+  const { setShowLogin } = useAuth()
   const [plan,    setPlan]    = useState('monthly')
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
@@ -37,6 +39,15 @@ export default function Paywall({ onClose, onRestore }) {
     try {
       await startCheckout(plan)   // redirects to Stripe on success
     } catch (e) {
+      // A guest (or no-email account) can't subscribe — the sub would attach to an
+      // anonymous UUID that dies with the browser. Send them to create an account
+      // instead of showing a dead-end error.
+      if (e.code === 'ACCOUNT_REQUIRED') {
+        setLoading(false)
+        onClose?.()
+        setShowLogin(true)
+        return
+      }
       setError(e.message || 'Checkout failed.')
       setLoading(false)
     }

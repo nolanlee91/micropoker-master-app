@@ -27,6 +27,22 @@ export default async function handler(req, res) {
   const { data: { user }, error: authErr } = await authClient.auth.getUser(token)
   if (authErr || !user) return res.status(401).json({ error: 'Unauthorized' })
 
+  // ── A subscription MUST attach to a real, confirmed account ────────────────
+  // The anonymous guest's UUID dies with the browser/cache — if we let it buy Pro,
+  // the customer pays but loses access on any new device or cache clear, with no
+  // way back into the same subscription. Likewise a typo'd / unconfirmed email
+  // would strand them. So require a confirmed-email account before checkout; the
+  // frontend turns this 403 into "create an account" instead of an error.
+  if (user.is_anonymous) {
+    return res.status(403).json({ code: 'ACCOUNT_REQUIRED', error: 'Please create an account before subscribing.' })
+  }
+  if (!user.email) {
+    return res.status(403).json({ code: 'ACCOUNT_REQUIRED', error: 'Add an email to your account before subscribing.' })
+  }
+  if (!user.email_confirmed_at && !user.confirmed_at) {
+    return res.status(403).json({ code: 'EMAIL_UNCONFIRMED', error: 'Please confirm your email (check your inbox) before subscribing.' })
+  }
+
   // ── Resolve the price for the requested plan ───────────────────────────────
   const { plan } = req.body || {}
   const priceId = plan === 'annual'

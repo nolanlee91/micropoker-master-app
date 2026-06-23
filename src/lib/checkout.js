@@ -14,7 +14,13 @@ export async function startCheckout(plan = 'monthly') {
     body: JSON.stringify({ plan }),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout.')
+  if (!res.ok || !data.url) {
+    // Preserve the backend's machine code (e.g. ACCOUNT_REQUIRED) so the caller can
+    // route the user to account creation instead of just showing an error.
+    const err = new Error(data.error || 'Could not start checkout.')
+    if (data.code) err.code = data.code
+    throw err
+  }
 
   window.location.href = data.url
 }

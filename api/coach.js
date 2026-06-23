@@ -234,7 +234,7 @@ export default async function handler(req, res) {
           const ipHash = createHash('sha256').update(salt + ip).digest('hex')
           const { data: ipCount, error: ipErr } = await admin.rpc('bump_ip_usage', { p_ip: ipHash })
           if (!ipErr && typeof ipCount === 'number' && ipCount > CAP_IP_ANON) {
-            return res.status(429).json({ error: "You've hit the free demo limit for this device. Sign in with Google to keep going — it's free." })
+            return res.status(429).json({ error: "You've hit the free demo limit for this device. Create a free account to keep going — it's free." })
           }
         }
       }
@@ -266,7 +266,7 @@ export default async function handler(req, res) {
         if (!tErr && typeof tCount === 'number' && tCount > tCap) {
           return res.status(429).json({
             error: user.is_anonymous
-              ? `Voice note limit reached (${tCap}/day). Sign in with Google for more.`
+              ? `Voice note limit reached (${tCap}/day). Create a free account for more.`
               : `Voice note limit reached (${tCap}/day). Come back tomorrow.`,
           })
         }
@@ -295,7 +295,7 @@ export default async function handler(req, res) {
           // "requests" not "hands": the cap counts every AI call (analysis + follow-up
           // + fix plan + debrief), so a user can hit it without analyzing that many hands.
           const msg = user.is_anonymous
-            ? `You've used your ${cap} free AI requests for today. Sign in with Google to keep going — it's free.`
+            ? `You've used your ${cap} free AI requests for today. Create a free account to keep going — it's free.`
             : `Daily limit reached (${cap} AI requests). Come back tomorrow — this keeps the AI fast for everyone.`
           return res.status(429).json({ error: msg })
         }

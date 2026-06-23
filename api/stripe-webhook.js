@@ -78,7 +78,10 @@ export default async function handler(req, res) {
       updated_at:             new Date().toISOString(),
     }
     const { error } = await admin.from('subscriptions').upsert(row, { onConflict: 'user_id' })
-    if (error) console.error('[webhook] upsert error:', error.message)
+    // THROW (don't just log) so the handler returns 500 and Stripe RETRIES. Returning
+    // 200 on a failed upsert means a paying customer never gets Pro and Stripe never
+    // tries again. Upsert is idempotent on user_id, so retries are safe.
+    if (error) throw new Error(`subscriptions upsert failed: ${error.message}`)
   }
 
   // Record a KOL commission for a paid invoice — IF the subscription still carries
@@ -143,8 +146,11 @@ export default async function handler(req, res) {
       commission_amount:      commission,
       paid_at:                invoice.created ? new Date(invoice.created * 1000).toISOString() : null,
     })
-    if (error && error.code !== '23505') {  // 23505 = unique violation = already recorded
-      console.error('[webhook] commission insert error:', error.message)
+    // 23505 = unique violation = already recorded (idempotent re-delivery) → fine.
+    // Any OTHER error: THROW so the handler 500s and Stripe retries — don't silently
+    // drop a commission the KOL is owed. Retry re-hits the same idempotent insert.
+    if (error && error.code !== '23505') {
+      throw new Error(`commission insert failed: ${error.message}`)
     }
   }
 

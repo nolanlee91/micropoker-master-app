@@ -43,11 +43,18 @@ export default async function handler(req, res) {
 
   // ── 1. Cancel the Stripe subscription (if any) BEFORE deleting anything ─────
   try {
-    const { data: sub } = await admin
+    const { data: sub, error: subErr } = await admin
       .from('subscriptions')
       .select('stripe_subscription_id')
       .eq('user_id', user.id)
       .maybeSingle()
+    // Supabase returns { error } WITHOUT throwing. If we ignored it, a transient
+    // lookup failure would read as "no subscription" and we'd delete the account
+    // while a live sub keeps billing. Fail closed: stop and let the user retry.
+    if (subErr) {
+      console.error('[delete-account] subscription lookup error:', subErr.message)
+      return res.status(500).json({ error: 'Could not verify your subscription. Please try again.' })
+    }
     const subId = sub?.stripe_subscription_id
     if (subId) {
       const stripe = new Stripe(STRIPE_SECRET_KEY)

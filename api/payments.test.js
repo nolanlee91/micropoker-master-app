@@ -13,6 +13,7 @@ const stripeH = {
   retrieveSub: vi.fn(),
   cancelSub: vi.fn(),
   createSession: vi.fn(),
+  listSubs: vi.fn(),
 }
 
 // Chainable, thenable query builder: resolves to the per-table result whether the
@@ -46,7 +47,7 @@ vi.mock('@supabase/supabase-js', () => ({
 vi.mock('stripe', () => ({
   default: class {
     webhooks = { constructEvent: (...a) => stripeH.constructEvent(...a) }
-    subscriptions = { retrieve: (...a) => stripeH.retrieveSub(...a), cancel: (...a) => stripeH.cancelSub(...a) }
+    subscriptions = { retrieve: (...a) => stripeH.retrieveSub(...a), cancel: (...a) => stripeH.cancelSub(...a), list: (...a) => stripeH.listSubs(...a) }
     checkout = { sessions: { create: (...a) => stripeH.createSession(...a) } }
   },
 }))
@@ -165,6 +166,63 @@ describe('stripe-webhook — retry on DB failure', () => {
     await handler(rawReq(), res)
     expect(res.statusCode).toBe(200)
     expect(res.body.received).toBe(true)
+  })
+})
+
+// ── P0: checkout refuses a DUPLICATE subscription (no double billing) ─────────
+describe('create-checkout-session — duplicate subscription guard', () => {
+  const confirmed = { data: { user: { id: 'u1', is_anonymous: false, email: 'a@b.com', email_confirmed_at: '2026-01-01' } }, error: null }
+
+  it('blocks with ALREADY_SUBSCRIBED when the customer has a live sub, and never creates a session', async () => {
+    const { default: handler } = await import('./create-checkout-session.js')
+    sb.getUser.mockResolvedValue(confirmed)
+    sb.tables.subscriptions = { data: { stripe_customer_id: 'cus1' }, error: null }
+    stripeH.listSubs.mockResolvedValue({ data: [{ status: 'active' }] })
+    const res = makeRes()
+    await handler(jsonReq({ plan: 'monthly' }), res)
+    expect(res.statusCode).toBe(409)
+    expect(res.body.code).toBe('ALREADY_SUBSCRIBED')
+    expect(stripeH.createSession).not.toHaveBeenCalled()
+  })
+
+  it('ALLOWS checkout when the only existing sub is canceled (re-subscribe)', async () => {
+    const { default: handler } = await import('./create-checkout-session.js')
+    sb.getUser.mockResolvedValue(confirmed)
+    sb.tables.subscriptions = { data: { stripe_customer_id: 'cus1' }, error: null }
+    stripeH.listSubs.mockResolvedValue({ data: [{ status: 'canceled' }] })
+    stripeH.createSession.mockResolvedValue({ url: 'https://stripe.test/checkout' })
+    const res = makeRes()
+    await handler(jsonReq({ plan: 'monthly' }), res)
+    expect(res.statusCode).toBe(200)
+    expect(stripeH.createSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('fails closed (503) if the existing-subscription check throws', async () => {
+    const { default: handler } = await import('./create-checkout-session.js')
+    sb.getUser.mockResolvedValue(confirmed)
+    sb.tables.subscriptions = { data: { stripe_customer_id: 'cus1' }, error: null }
+    stripeH.listSubs.mockRejectedValue(new Error('stripe down'))
+    const res = makeRes()
+    await handler(jsonReq({ plan: 'monthly' }), res)
+    expect(res.statusCode).toBe(503)
+    expect(stripeH.createSession).not.toHaveBeenCalled()
+  })
+})
+
+// ── P1: a cancel/delete event for an already-deleted user is a no-op, not a 500 ─
+describe('stripe-webhook — deleted-user cancel is a no-op', () => {
+  const deletedEvent = {
+    type: 'customer.subscription.deleted',
+    data: { object: { id: 'sub1', status: 'canceled', customer: 'cus1', metadata: { supabase_user_id: 'gone' }, items: { data: [{ price: { id: 'price_m' } }] } } },
+  }
+
+  it('returns 200 (not 500) when the upsert hits a foreign-key violation (user gone)', async () => {
+    const { default: handler } = await import('./stripe-webhook.js')
+    stripeH.constructEvent.mockReturnValue(deletedEvent)
+    sb.tables.subscriptions = { data: null, error: { code: '23503', message: 'fk violation' } }
+    const res = makeRes()
+    await handler(rawReq(), res)
+    expect(res.statusCode).toBe(200)
   })
 })
 

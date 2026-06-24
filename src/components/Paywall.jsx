@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { BrainCircuit, Check, X, ShieldCheck, RotateCcw } from 'lucide-react'
 import { startCheckout } from '../lib/checkout'
+import { openBillingPortal } from '../lib/portal'
 import { useAuth } from '../context/AuthContext'
 
 // Paywall for Pro (the Leak Profile). Real billing via Stripe Checkout — the
@@ -47,6 +48,12 @@ export default function Paywall({ onClose, onRestore }) {
         onClose?.()
         setShowLogin(true)
         return
+      }
+      // They already have a live subscription — don't let them buy a second one;
+      // send them straight to the Billing Portal to manage the existing one.
+      if (e.code === 'ALREADY_SUBSCRIBED') {
+        try { await openBillingPortal(); return }
+        catch (e2) { setError(e2.message || 'You already have a subscription. Manage it from your account.'); setLoading(false); return }
       }
       setError(e.message || 'Checkout failed.')
       setLoading(false)

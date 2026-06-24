@@ -274,7 +274,7 @@ export default async function handler(req, res) {
         const tCap = user.is_anonymous ? CAP_T_ANON : isProUser ? CAP_T_PRO : CAP_T_FREE
         const { data: tCount, error: tErr } = await admin.rpc('bump_transcribe_usage', { p_user: user.id })
         if (!tErr && typeof tCount === 'number' && tCount > tCap) {
-          await admin.rpc('refund_transcribe_usage', { p_user: user.id }).catch(() => {})
+          try { await admin.rpc('refund_transcribe_usage', { p_user: user.id }) } catch {}
           return res.status(429).json({
             error: user.is_anonymous
               ? `Voice note limit reached (${tCap}/day). Create a free account for more.`
@@ -289,7 +289,7 @@ export default async function handler(req, res) {
         if (isProUser) {
           const { data: count, error: capErr } = await admin.rpc('bump_coach_analysis_month', { p_user: user.id })
           if (!capErr && typeof count === 'number' && count > CAP_ANALYSIS_PRO_MO) {
-            await admin.rpc('refund_coach_analysis_month', { p_user: user.id }).catch(() => {})
+            try { await admin.rpc('refund_coach_analysis_month', { p_user: user.id }) } catch {}
             return res.status(429).json({ error: `You've used all ${CAP_ANALYSIS_PRO_MO} hand analyses this month. Your quota resets on the 1st.` })
           }
           if (!capErr) pendingRefundRpc = 'refund_coach_analysis_month'
@@ -297,7 +297,7 @@ export default async function handler(req, res) {
           const { data: count, error: capErr } = await admin.rpc('bump_coach_analysis_total', { p_user: user.id })
           const cap = user.is_anonymous ? CAP_ANALYSIS_ANON : CAP_ANALYSIS_FREE
           if (!capErr && typeof count === 'number' && count > cap) {
-            await admin.rpc('refund_coach_analysis_total', { p_user: user.id }).catch(() => {})
+            try { await admin.rpc('refund_coach_analysis_total', { p_user: user.id }) } catch {}
             const msg = user.is_anonymous
               ? `You've used your ${cap} free analyses. Create a free account for ${CAP_ANALYSIS_FREE} more — it's free.`
               : `You've used all ${cap} free hand analyses. Go Pro for ${CAP_ANALYSIS_PRO_MO} a month — full Leak Profile, fix plans and debriefs included.`
@@ -310,7 +310,7 @@ export default async function handler(req, res) {
         const cap = user.is_anonymous ? CAP_FLASH_ANON : isProUser ? CAP_FLASH_PRO : CAP_FLASH_FREE
         const { data: count, error: capErr } = await admin.rpc('bump_coach_usage', { p_user: user.id })
         if (!capErr && typeof count === 'number' && count > cap) {
-          await admin.rpc('refund_coach_usage', { p_user: user.id }).catch(() => {})
+          try { await admin.rpc('refund_coach_usage', { p_user: user.id }) } catch {}
           const msg = user.is_anonymous
             ? `You've hit today's free limit. Create a free account to keep going — it's free.`
             : `Daily limit reached (${cap}/day). Come back tomorrow — this keeps the AI fast for everyone.`

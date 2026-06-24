@@ -160,17 +160,27 @@ export function AuthProvider({ children }) {
       options: { emailRedirectTo: window.location.origin },
     })
 
+    // guestDataMigrated: null = there was nothing to migrate (no guest data);
+    // true = copied OK; false = there WAS guest data but the copy failed. The caller
+    // uses this so it never promises "your data will be there" when it isn't.
+    let guestDataMigrated = null
     const newId = result.data?.user?.id
     if (!result.error && guestId && guestToken && newId && newId !== guestId) {
-      try {
-        await fetch('/api/migrate-guest-data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${guestToken}` },
-          body: JSON.stringify({ targetUserId: newId }),
-        })
-      } catch { /* guest data not carried — account still created */ }
+      guestDataMigrated = false
+      // Light retry — a transient network blip shouldn't silently lose the leak
+      // profile. Still best-effort: the account is created regardless.
+      for (let attempt = 0; attempt < 2 && !guestDataMigrated; attempt++) {
+        try {
+          const r = await fetch('/api/migrate-guest-data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${guestToken}` },
+            body: JSON.stringify({ targetUserId: newId }),
+          })
+          if (r.ok) guestDataMigrated = true
+        } catch { /* retry, then give up — account still created */ }
+      }
     }
-    return result
+    return { ...result, guestDataMigrated }
   }
 
   async function signInWithPassword(email, password) {

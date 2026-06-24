@@ -83,6 +83,13 @@ export function Terms() {
         and then your subscription simply stops renewing — you are not charged again. We do not provide
         partial or pro-rated refunds for unused time.
       </p>
+      <p>
+        <strong>Deleting your account is an exception:</strong> because it permanently removes your account
+        and data, it <strong>cancels your subscription immediately</strong> and you <strong>forfeit any
+        remaining paid time</strong> (no refund for the unused part of the current period). If you only want
+        to stop renewing while keeping access until the period ends, cancel from
+        <em> Preferences → Manage subscription</em> instead of deleting your account.
+      </p>
 
       <H2>Acceptable use</H2>
       <p>

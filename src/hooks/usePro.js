@@ -14,18 +14,23 @@ import { supabase } from '../lib/supabase'
 // Module-level cache so navigating back to a Pro-gated screen doesn't flash the
 // non-Pro view for ~300ms while Supabase is re-queried. First load still resolves
 // from the network; after that, mounts start from the last known value.
-let proCache = { value: false, known: false }
+let proCache = { value: false, hasSub: false, known: false }
 
 export function usePro() {
-  const [isPro, setIsPro]     = useState(proCache.value)
-  const [loading, setLoading] = useState(!proCache.known)
+  const [isPro, setIsPro]                     = useState(proCache.value)
+  // hasSubscription = there's a billing relationship to MANAGE (active, trialing,
+  // OR a broken one: past_due/unpaid). It is NOT the feature entitlement — a
+  // past_due user is NOT Pro but MUST still reach the Billing Portal to fix their
+  // card, and must NOT see "Go Pro" (which would create a duplicate subscription).
+  const [hasSubscription, setHasSubscription] = useState(proCache.hasSub)
+  const [loading, setLoading]                 = useState(!proCache.known)
 
   // Returns the resolved entitlement so callers can poll until it flips true
   // (e.g. right after Stripe Checkout, while the webhook is still writing the row).
   const refresh = useCallback(async () => {
     if (!proCache.known) setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { proCache = { value: false, known: true }; setIsPro(false); setLoading(false); return false }
+    if (!user) { proCache = { value: false, hasSub: false, known: true }; setIsPro(false); setHasSubscription(false); setLoading(false); return false }
 
     const { data } = await supabase
       .from('subscriptions')
@@ -36,8 +41,10 @@ export function usePro() {
     const active     = !!data && ['active', 'trialing'].includes(data.status)
     const notExpired = !data?.current_period_end || new Date(data.current_period_end) > new Date()
     const result = active && notExpired
-    proCache = { value: result, known: true }
+    const hasSub = !!data && ['active', 'trialing', 'past_due', 'unpaid'].includes(data.status)
+    proCache = { value: result, hasSub, known: true }
     setIsPro(result)
+    setHasSubscription(hasSub)
     setLoading(false)
     return result
   }, [])
@@ -49,5 +56,5 @@ export function usePro() {
     return () => subscription.unsubscribe()
   }, [refresh])
 
-  return { isPro, loading, refresh }
+  return { isPro, hasSubscription, loading, refresh }
 }

@@ -26,7 +26,7 @@ function Section({ title, children }) {
 export default function Account() {
   const navigate = useNavigate()
   const { deleteAccount, session, setShowLogin } = useAuth()
-  const { isPro, refresh: refreshPro } = usePro()
+  const { isPro, hasSubscription, refresh: refreshPro } = usePro()
   const isAnon = !!session?.user?.is_anonymous
   const email  = session?.user?.email || ''
 
@@ -89,8 +89,16 @@ export default function Account() {
               <div style={{ fontSize:'0.9rem', color:C.text, wordBreak:'break-all' }}>{email || 'Signed in'}</div>
             </Section>
 
-            {isPro ? (
+            {hasSubscription ? (
               <Section title="Subscription">
+                {/* past_due/unpaid: they HAVE a subscription but the last charge
+                    failed, so they're not currently Pro. Surface it and push them to
+                    the portal to fix the card — never show "Go Pro" (would duplicate). */}
+                {!isPro && (
+                  <div style={{ fontSize:'0.78rem', color:C.red, fontWeight:600, marginBottom:'10px', lineHeight:1.5 }}>
+                    Your last payment didn’t go through. Update your card to keep Pro.
+                  </div>
+                )}
                 <button
                   onClick={handleManageSubscription}
                   disabled={portalLoading}

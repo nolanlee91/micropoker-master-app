@@ -58,7 +58,7 @@ export default function LoginScreen({ onClose }) {
     }
 
     if (mode === 'signup') {
-      const { data, error } = await signUpWithPassword(mail, password)
+      const { data, error, guestDataMigrated } = await signUpWithPassword(mail, password)
       setLoading(false)
       if (error) {
         if (/already|registered|exists/i.test(error.message)) {
@@ -77,8 +77,13 @@ export default function LoginScreen({ onClose }) {
         if (onClose) onClose()
         return
       }
-      // No session → confirmation required and on its way.
-      setNotice(`Check your inbox — we sent a confirmation link to ${mail}. Click it to activate your account and sign in. Your current data will be there.`)
+      // No session → confirmation required and on its way. Only promise the data
+      // carried over if it actually did (guestDataMigrated === false means there was
+      // guest data but the copy didn't complete — don't claim it'll be there).
+      const base = `Check your inbox — we sent a confirmation link to ${mail}. Click it to activate your account and sign in.`
+      setNotice(guestDataMigrated === false
+        ? `${base} Note: we couldn't finish moving your guest data — it stays on this device, so finish on this browser to keep it.`
+        : `${base} Your current data will be there.`)
     } else {
       const { error } = await signInWithPassword(mail, password)
       setLoading(false)

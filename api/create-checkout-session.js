@@ -68,6 +68,29 @@ export default async function handler(req, res) {
     } catch { /* non-fatal — Checkout will create a customer */ }
   }
 
+  // ── Block a DUPLICATE subscription ─────────────────────────────────────────
+  // We keep ONE subscriptions row per user, so a second checkout would orphan the
+  // first sub (still billing on Stripe) while the DB forgets it — and account
+  // deletion would then only cancel the remembered one, leaving the other to bill
+  // forever. So if this customer already has a live subscription on Stripe, refuse
+  // and send them to the Billing Portal (frontend turns ALREADY_SUBSCRIBED into
+  // "Manage subscription"). New buyers have no customerId yet → skip this check.
+  if (customerId) {
+    const LIVE_STATUSES = ['active', 'trialing', 'past_due', 'unpaid']
+    try {
+      const list = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 20 })
+      if (list.data.some((s) => LIVE_STATUSES.includes(s.status))) {
+        return res.status(409).json({ code: 'ALREADY_SUBSCRIBED', error: 'You already have an active subscription — manage it from your account.' })
+      }
+    } catch (e) {
+      // Fail CLOSED: if we can't verify, don't risk a duplicate charge. Only users
+      // who already have a customer record hit this, so a brief Stripe hiccup just
+      // asks them to retry — it never blocks a genuine first purchase.
+      console.error('[checkout] could not verify existing subscriptions:', e.message)
+      return res.status(503).json({ error: 'Could not verify your subscription status. Please try again in a moment.' })
+    }
+  }
+
   const origin = req.headers.origin || `https://${req.headers.host}`
 
   try {

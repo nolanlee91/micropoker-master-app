@@ -89,10 +89,21 @@ export default async function handler(req, res) {
       updated_at:             new Date().toISOString(),
     }
     const { error } = await admin.from('subscriptions').upsert(row, { onConflict: 'user_id' })
-    // THROW (don't just log) so the handler returns 500 and Stripe RETRIES. Returning
-    // 200 on a failed upsert means a paying customer never gets Pro and Stripe never
-    // tries again. Upsert is idempotent on user_id, so retries are safe.
-    if (error) throw new Error(`subscriptions upsert failed: ${error.message}`)
+    if (error) {
+      // 23503 = foreign_key_violation: the user was deleted (account-deletion cascade
+      // already removed their subscriptions row). "No row" is exactly the desired end
+      // state, so a late cancel/delete event for a gone user is a no-op — NOT a failure.
+      // Returning 200 here stops Stripe from retrying a 500 forever and burying real
+      // payment errors in the webhook log.
+      if (error.code === '23503') {
+        console.log('[webhook] subscription event for deleted user', userId, '→ no-op (row already gone)')
+        return
+      }
+      // Any OTHER error: THROW so the handler returns 500 and Stripe RETRIES. Returning
+      // 200 on a failed upsert means a paying customer never gets Pro and Stripe never
+      // tries again. Upsert is idempotent on user_id, so retries are safe.
+      throw new Error(`subscriptions upsert failed: ${error.message}`)
+    }
   }
 
   // Record a KOL commission for a paid invoice — IF the subscription still carries
@@ -117,7 +128,11 @@ export default async function handler(req, res) {
     try {
       sub = await stripe.subscriptions.retrieve(subId, { expand: ['discounts'] })
     } catch (err) {
-      console.error('[webhook] commission: sub retrieve failed', err.message); return
+      // Infra failure (Stripe down / rate-limited) — NOT a "no commission" signal.
+      // THROW so the handler 500s and Stripe RETRIES; otherwise a KOL's commission is
+      // silently lost forever. recordCommission is idempotent (unique invoice id),
+      // so a retry that re-runs it is safe.
+      throw new Error(`commission: subscription retrieve failed: ${err.message}`)
     }
     const discounts = sub.discounts?.length ? sub.discounts : (sub.discount ? [sub.discount] : [])
     let promoCodeId = null
@@ -128,11 +143,14 @@ export default async function handler(req, res) {
     if (!promoCodeId) return  // no KOL promo on this invoice → nothing to pay
 
     // Map the promo code → KOL.
-    const { data: kol } = await admin
+    const { data: kol, error: kolErr } = await admin
       .from('kols')
       .select('id, email, commission_rate, active')
       .eq('stripe_promotion_code_id', promoCodeId)
       .maybeSingle()
+    // A lookup ERROR is infra failure, not "no KOL" — THROW so Stripe retries rather
+    // than silently dropping a commission this invoice may actually owe.
+    if (kolErr) throw new Error(`commission: kols lookup failed: ${kolErr.message}`)
     if (!kol || kol.active === false) return
 
     // Anti-abuse: a KOL can't earn commission off their own subscription.

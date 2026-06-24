@@ -172,6 +172,19 @@ export default async function handler(req, res) {
         const userId = session.client_reference_id || session.metadata?.supabase_user_id
         if (session.subscription) {
           const sub = await stripe.subscriptions.retrieve(session.subscription)
+          // checkout.session.completed is the ONE event guaranteed to fire on a
+          // successful subscription purchase, and `payment_status === 'paid'` means
+          // the first invoice has cleared. The Subscription object can still read
+          // 'incomplete' here (read-replica lag right after activation), and relying
+          // on a later customer.subscription.updated(active) event is fragile — if it
+          // is slow, dropped, or not delivered, a paying customer never gets Pro.
+          // So when checkout says paid, trust it: treat the sub as active. The
+          // regression guard in upsertFromSubscription keeps a later stray
+          // 'incomplete' from undoing this, and a real cancel still applies normally.
+          if (session.payment_status === 'paid' && ['incomplete', 'incomplete_expired'].includes(sub.status)) {
+            console.log('[webhook] checkout paid but sub', sub.id, 'still', sub.status, '→ treating as active')
+            sub.status = 'active'
+          }
           await upsertFromSubscription(sub, userId)
         }
         break

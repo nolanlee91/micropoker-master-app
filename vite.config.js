@@ -16,10 +16,22 @@ function stampSwPlugin() {
     apply: 'build',
     closeBundle() {
       const swPath = resolve('dist/sw.js')
+      // FAIL the build (don't swallow) if anything's wrong — a green deploy that
+      // didn't actually stamp sw.js would silently break PWA auto-update.
+      let src
       try {
-        const src = readFileSync(swPath, 'utf8')
-        writeFileSync(swPath, stampServiceWorker(src, BUILD_ID))
-      } catch { /* no sw.js in output → nothing to stamp */ }
+        src = readFileSync(swPath, 'utf8')
+      } catch {
+        throw new Error('[stamp-service-worker] dist/sw.js not found — the service worker must ship with a stamped version. Aborting build.')
+      }
+      if (!src.includes('__SW_VERSION__')) {
+        throw new Error('[stamp-service-worker] dist/sw.js is missing the __SW_VERSION__ placeholder — version not stamped. Aborting build.')
+      }
+      const out = stampServiceWorker(src, BUILD_ID)
+      if (out.includes('__SW_VERSION__')) {
+        throw new Error('[stamp-service-worker] __SW_VERSION__ still present after stamping. Aborting build.')
+      }
+      writeFileSync(swPath, out)
     },
   }
 }

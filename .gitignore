@@ -3,3 +3,6 @@ dist
 .env.local
 .env.*.local
 .claude/
+
+# Internal ops runbook (commission strategy + proposal) — keep out of git
+KOL-PILOT.md

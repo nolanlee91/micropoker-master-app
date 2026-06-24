@@ -249,8 +249,9 @@ export default async function handler(req, res) {
         }
       }
 
-      // (3) Per-user cap. Pro check (mirrors usePro: active/trialing sub not expired)
-      //     is shared by the transcribe cap and the analysis cap.
+      // (3) Per-user cap. Pro check (mirrors usePro: a real active/trialing sub that
+      //     hasn't expired, OR a live complimentary grant) is shared by the transcribe
+      //     and analysis caps.
       if (!user.is_anonymous) {
         const { data: sub } = await admin
           .from('subscriptions')
@@ -259,7 +260,13 @@ export default async function handler(req, res) {
           .maybeSingle()
         const activeStatus = !!sub && ['active', 'trialing'].includes(sub.status)
         const notExpired   = !sub?.current_period_end || new Date(sub.current_period_end) > new Date()
-        isProUser = activeStatus && notExpired
+        const { data: grant } = await admin
+          .from('pro_grants')
+          .select('complimentary_until')
+          .eq('user_id', user.id)
+          .maybeSingle()
+        const comped = !!grant?.complimentary_until && new Date(grant.complimentary_until) > new Date()
+        isProUser = (activeStatus && notExpired) || comped
       }
 
       if (isTranscribe) {

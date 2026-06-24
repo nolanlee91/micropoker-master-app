@@ -26,7 +26,7 @@ function Section({ title, children }) {
 export default function Account() {
   const navigate = useNavigate()
   const { deleteAccount, session, setShowLogin } = useAuth()
-  const { isPro, hasSubscription, refresh: refreshPro } = usePro()
+  const { isPro, hasSubscription, complimentaryUntil, refresh: refreshPro } = usePro()
   const isAnon = !!session?.user?.is_anonymous
   const email  = session?.user?.email || ''
 
@@ -115,6 +115,22 @@ export default function Account() {
                   Update payment, view invoices, or cancel — on Stripe.
                 </div>
                 {portalError && <div style={{ fontSize:'0.76rem', color:C.red, marginTop:'8px' }}>{portalError}</div>}
+              </Section>
+            ) : complimentaryUntil ? (
+              // Complimentary Pro (a comp grant — e.g. KOL pilot). They have full Pro
+              // via pro_grants, NOT a Stripe sub — so no Billing Portal, but offer a
+              // path to subscribe so they can continue after the comp ends.
+              <Section title="Subscription">
+                <div style={{ fontSize:'0.82rem', color:C.primary, fontWeight:700, marginBottom:'4px' }}>Pro — complimentary</div>
+                <div style={{ fontSize:'0.74rem', color:C.textMuted, lineHeight:1.55, marginBottom:'12px' }}>
+                  You have full Pro access until <strong style={{ color:C.text }}>{new Date(complimentaryUntil).toLocaleDateString()}</strong>. Subscribe anytime to keep it after that.
+                </div>
+                <button
+                  onClick={() => setShowPaywall(true)}
+                  style={{ width:'100%', padding:'11px', borderRadius:'9px', border:'none', background:'linear-gradient(135deg,#67f09a,#54e98a,#2db866)', color:'#061a0e', fontSize:'0.82rem', fontWeight:800, cursor:'pointer' }}
+                >
+                  Go Pro
+                </button>
               </Section>
             ) : (
               // A direct path to buy Pro that doesn't depend on first logging hands —

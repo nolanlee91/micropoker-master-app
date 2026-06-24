@@ -133,6 +133,12 @@ function SettingsPanel({ onClose, panelRef, language, setLanguage }) {
         <a href="/privacy" style={{ fontSize:'0.62rem', color:C.textMuted, textDecoration:'none', whiteSpace:'nowrap' }}>Privacy</a>
         <a href="/support" style={{ fontSize:'0.62rem', color:C.textMuted, textDecoration:'none', whiteSpace:'nowrap' }}>Support</a>
       </div>
+
+      {/* Build version — lets you confirm web vs PWA are on the same deploy. Stamped
+          at build time (vite define); a matching value here on both = both updated. */}
+      <div style={{ marginTop:'10px', textAlign:'center', fontSize:'0.54rem', color:C.textMuted, opacity:0.7, letterSpacing:'0.03em' }}>
+        v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}
+      </div>
     </div>
   )
 }

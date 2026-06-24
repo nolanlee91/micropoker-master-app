@@ -15,7 +15,11 @@ export default async function handler(req, res) {
   const SUPABASE_URL      = process.env.SUPABASE_URL      || process.env.VITE_SUPABASE_URL
   const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
   const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !STRIPE_SECRET_KEY) {
+  const SERVICE_ROLE      = process.env.SUPABASE_SERVICE_ROLE_KEY
+  // SERVICE_ROLE is REQUIRED: the duplicate-subscription guard below reads the
+  // subscriptions table with it. Missing it would skip the guard (fail-open) and
+  // could create a SECOND subscription — so fail closed if it isn't configured.
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !STRIPE_SECRET_KEY || !SERVICE_ROLE) {
     return res.status(500).json({ error: 'Payments not configured' })
   }
 
@@ -52,20 +56,22 @@ export default async function handler(req, res) {
 
   const stripe = new Stripe(STRIPE_SECRET_KEY)
 
-  // Reuse this user's existing Stripe customer if we already have one (avoids
-  // duplicate customers on repeat checkouts). Looked up via service role.
+  // Look up this user's existing Stripe customer (to reuse it). FAIL CLOSED on a
+  // lookup error: a silent null here would skip the duplicate-subscription guard
+  // below and let a second subscription be created.
   let customerId = null
-  const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (SERVICE_ROLE) {
-    try {
-      const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
-      const { data } = await admin
-        .from('subscriptions')
-        .select('stripe_customer_id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      customerId = data?.stripe_customer_id || null
-    } catch { /* non-fatal — Checkout will create a customer */ }
+  {
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
+    const { data: subRow, error: subErr } = await admin
+      .from('subscriptions')
+      .select('stripe_customer_id')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (subErr) {
+      console.error('[checkout] subscriptions lookup failed:', subErr.message)
+      return res.status(503).json({ error: 'Could not verify your subscription status. Please try again in a moment.' })
+    }
+    customerId = subRow?.stripe_customer_id || null
   }
 
   // ── Block a DUPLICATE subscription ─────────────────────────────────────────
@@ -75,8 +81,11 @@ export default async function handler(req, res) {
   // forever. So if this customer already has a live subscription on Stripe, refuse
   // and send them to the Billing Portal (frontend turns ALREADY_SUBSCRIBED into
   // "Manage subscription"). New buyers have no customerId yet → skip this check.
+  // Block every status that represents a real, uncanceled subscription — including
+  // `incomplete` (a checkout whose first payment is still settling) and `paused`,
+  // so a second checkout can't slip through during those windows.
   if (customerId) {
-    const LIVE_STATUSES = ['active', 'trialing', 'past_due', 'unpaid']
+    const LIVE_STATUSES = ['active', 'trialing', 'past_due', 'unpaid', 'incomplete', 'paused']
     try {
       const list = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 20 })
       if (list.data.some((s) => LIVE_STATUSES.includes(s.status))) {

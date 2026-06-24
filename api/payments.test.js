@@ -207,6 +207,38 @@ describe('create-checkout-session — duplicate subscription guard', () => {
     expect(res.statusCode).toBe(503)
     expect(stripeH.createSession).not.toHaveBeenCalled()
   })
+
+  it('fails closed (503) if the subscriptions DB lookup errors — never creates a session', async () => {
+    const { default: handler } = await import('./create-checkout-session.js')
+    sb.getUser.mockResolvedValue(confirmed)
+    sb.tables.subscriptions = { data: null, error: { message: 'db down' } }
+    const res = makeRes()
+    await handler(jsonReq({ plan: 'monthly' }), res)
+    expect(res.statusCode).toBe(503)
+    expect(stripeH.listSubs).not.toHaveBeenCalled()
+    expect(stripeH.createSession).not.toHaveBeenCalled()
+  })
+
+  it('blocks an INCOMPLETE subscription (first payment still settling)', async () => {
+    const { default: handler } = await import('./create-checkout-session.js')
+    sb.getUser.mockResolvedValue(confirmed)
+    sb.tables.subscriptions = { data: { stripe_customer_id: 'cus1' }, error: null }
+    stripeH.listSubs.mockResolvedValue({ data: [{ status: 'incomplete' }] })
+    const res = makeRes()
+    await handler(jsonReq({ plan: 'monthly' }), res)
+    expect(res.statusCode).toBe(409)
+    expect(res.body.code).toBe('ALREADY_SUBSCRIBED')
+    expect(stripeH.createSession).not.toHaveBeenCalled()
+  })
+
+  it('returns 500 when SERVICE_ROLE is not configured (fail closed)', async () => {
+    const { default: handler } = await import('./create-checkout-session.js')
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY
+    const res = makeRes()
+    await handler(jsonReq({ plan: 'monthly' }), res)
+    expect(res.statusCode).toBe(500)
+    expect(stripeH.createSession).not.toHaveBeenCalled()
+  })
 })
 
 // ── P1: a cancel/delete event for an already-deleted user is a no-op, not a 500 ─

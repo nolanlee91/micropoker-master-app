@@ -87,6 +87,13 @@
   .meta{font-size:0.78rem;color:var(--muted);margin-top:8px;display:flex;flex-direction:column;gap:4px}
   .fix{font-size:0.82rem;color:var(--primary);margin-top:8px;background:rgba(84,233,138,0.06);
     border:1px solid rgba(84,233,138,0.15);border-radius:8px;padding:8px 10px}
+  /* Sub-task checklist inside one item: bullets; done = struck-through + dimmed */
+  .subtasks{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}
+  .subtasks li{font-size:0.83rem;color:#c9d1d9;line-height:1.45;display:flex;gap:8px;align-items:baseline}
+  .subtasks li .mk{flex-shrink:0;font-weight:700;width:14px;text-align:center}
+  .subtasks li.st-done{opacity:0.42;text-decoration:line-through;text-decoration-color:var(--muted)}
+  .subtasks li.st-done .mk{color:var(--primary);text-decoration:none;display:inline-block}
+  .subtasks li:not(.st-done) .mk{color:var(--muted)}
   .controls{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
   select{background:var(--surfaceHi);color:var(--text);border:1px solid var(--border);
     border-radius:7px;padding:5px 8px;font-size:0.76rem;font-family:inherit;cursor:pointer}
@@ -349,7 +356,18 @@ const ITEMS = [
   { id:'REF-2', sev:'feat', done:false, status:'CODE XONG · CHỜ BẠN TEST (tiền thật)', notes:'2026-06-23..24. Triển khai pilot KOL theo plan codex + sửa 3 điểm codex review (math/comp/payout) + 4 điểm review hôm nay (điều kiện payout trong proposal, refund-sau-payout, typo, copy xóa account comp). KOL-PILOT.md (runbook+proposal) ĐÃ chuyển vào folder app + gitignore để codex đọc trực tiếp.', title:'KOL pilot: hoa hồng 20% năm-đầu + comp Pro qua pro_grants + sổ payout (ledger)',
     desc:'<span class="lbl">Tự marketing chậm → mở pilot KOL.</span> Mỗi KOL 1 promo code (=khóa attribution) → khách −10%, hoa hồng 20% doanh thu thực trả, CHỈ năm đầu (coupon hết 12 tháng → tự ngừng). Số thực: monthly $2.16/th, annual $21.42/năm. Comp Pro cho KOL bằng pro_grants (KHÔNG sub giả). Payout: chỉ trả khoản mature >30 ngày, chưa trả, chưa reversed, ≥ $25.',
     files:['db/migration-4-referrals.sql (kols+commissions+view kol_payouts; ledger paid_out_at/reversed_at; payable_now_usd)','db/migration-6-pro-grants.sql (comp Pro sạch)','api/stripe-webhook.js (recordCommission)','scripts/create-kol.mjs (tạo coupon dùng chung + promo code + insert kol)','src/hooks/usePro.js + Account.jsx (nhận biết comp)','KOL-PILOT.md (runbook A–E + proposal EN — trong app/, gitignored)'],
-    fix:'Sửa codex review: (1) math đúng $2.16/$21.42; (2) comp qua pro_grants thay sub giả; (3) payout ledger chống trả trùng. Sửa review hôm nay: proposal công khai "confirmed after 30 days · paid monthly once balance ≥ $25 · refunds excluded"; runbook thêm quy trình refund-MUỘN-sau-payout (ghi âm vào sổ tay → trừ 1 lần kỳ sau → đánh dấu recovered); fix typo "Nhủy"→"Hủy"; copy xóa account tách comp ("complimentary Pro access will end") vs sub thật. ĐÃ XONG (2026-06-24): migration-4+6 đã chạy (6 bảng OK); event invoice.paid đã bật trên webhook LIVE; tạo KOL giờ qua ADMIN CONSOLE (xem ADMIN-1) thay create-kol.mjs. CÒN CHỜ BẠN TEST: attribution bằng tiền thật (tạo TESTKOL trên console → mua → commission ≈ 216 cents) rồi DỌN; comp grant (sống→Pro, hết hạn→Free); payout view 4 trạng thái. Xong mới gửi proposal.' },
+    subtasks:[
+      {t:'Code commission/comp/payout + sửa 3 điểm codex (math $2.16/$21.42 · comp qua pro_grants · payout ledger)',done:true},
+      {t:'Sửa 4 điểm review (proposal payout terms · refund-sau-payout · typo "Hủy" · copy xóa account comp)',done:true},
+      {t:'Chạy migration-4 + migration-6',done:true},
+      {t:'Bật event invoice.paid trên webhook LIVE',done:true},
+      {t:'Tạo KOL qua admin console (thay create-kol.mjs)',done:true},
+      {t:'Test ATTRIBUTION tiền thật: TESTKOL → mua → commission ≈ 216 cents → dọn',done:false},
+      {t:'Test comp grant: sống→Pro, hết hạn→Free',done:false},
+      {t:'Test payout view 4 trạng thái (immature/mature/reversed/paid)',done:false},
+      {t:'Gửi proposal cho KOL (sau khi test xanh)',done:false},
+    ],
+    fix:'Pilot KOL: khách −10%, hoa hồng 20% chỉ năm đầu (coupon hết 12 tháng → tự ngừng). Còn lại thuần test tay rồi mới gửi proposal.' },
 
   { id:'REVIEW-4', sev:'feat', done:true, status:'DONE (P0+P1) · P2 để pilot tay', notes:'2026-06-24. Codex round-4 pre-go-live: 1 P0 (blocker) + 1 P1 + 1 P2. Kiểm trên code — đều thật — sửa P0+P1 ngay (build + 70/70 test xanh). P0 cần CHẠY SQL trên LIVE DB (function cũ vẫn nằm trong DB dù file đã sửa).', title:'Codex round-4: gỡ RPC delete_current_user (orphan sub) + sửa thứ tự quota Pro-only',
     desc:'<span class="lbl">P0 BLOCKER:</span> RPC cũ <code>public.delete_current_user()</code> (db/migration.sql) vẫn <code>grant execute … to authenticated</code> → user đã đăng nhập gọi THẲNG qua Supabase API/console được, nó <code>delete from auth.users</code> mà KHÔNG hủy Stripe sub → orphan subscription vẫn charge thẻ (đúng bug cũ quay lại). Frontend không gọi nữa nhưng RPC vẫn mở. <span class="lbl">P1:</span> coach.js bump <code>bump_coach_usage</code> (flash) RỒI mới chặn Pro-only ở dưới → free/anon gọi thẳng leak_fix/debrief bị trừ oan 1 flash credit trước khi nhận 403 (không tốn tiền Gemini vì chưa gọi model, nhưng trừ quota sai). <span class="lbl">P2:</span> refund/chargeback KOL chưa có handler tự set reversed_at (webhook mới xử invoice.paid).',
@@ -359,12 +377,34 @@ const ITEMS = [
   { id:'ADMIN-1', sev:'feat', done:true, status:'DONE (deploy LIVE) · 3 việc để dành', notes:'2026-06-24. Chủ KHÔNG muốn mỗi KOL mới lại chạy script + không muốn trộn đồ nội bộ vào app khách → dựng admin tool RIÊNG. Repo riêng nolanlee91/mpm-admin, Vercel riêng, domain riêng admin.micropokermaster.com (đã chạy HTTPS). Codex audit: dùng được cho pilot, đã sửa 2 cái trước khi live (discount bug + LIVE badge).', title:'mpm-admin — KOL Console nội bộ (tạo KOL bằng form, payout, reverse)',
     desc:'<span class="lbl">Tool vận hành KOL, TÁCH khỏi app khách.</span> Vite+React+Vercel serverless. 4 phần: đăng nhập admin (Supabase Auth + allowlist ADMIN_EMAILS, khách đăng nhập → 403); Create KOL (form bấm nút → Stripe promo + ghi kols, thay create-kol.mjs); bảng KOL + payout (đọc kol_payouts); Mark paid / Reverse. Service-role + sk_live chỉ ở server, .env.local gitignore. Discount cố định 10% (1 coupon chung), commission % per-KOL.',
     files:['repo nolanlee91/mpm-admin (riêng — KHÔNG trong app khách)','api/ create-kol·kols·payout·reverse + lib/adminAuth.js (requireAdmin: token + allowlist)','src/ (Login + Dashboard + CreateKol + KolTable + Commissions)','vite-dev-api.mjs (chạy /api local qua npm run dev)','HUONG-DAN.md (hướng dẫn dùng) + README.md (setup)'],
-    fix:'Codex pre-go-live audit (2026-06-24) — đã sửa: (1) DISCOUNT BUG: coupon dùng chung bị reuse bất kể % nhập → bỏ ô discount, cố định 10%, response lấy coupon.percent_off thật. (2) LIVE BADGE đỏ ở header chống bấm nhầm. (3) README lệch (local dev chạy /api qua plugin). ĐỂ DÀNH (không blocker pilot solo, thêm khi trả tiền thật đều / nhiều admin): (a) AUDIT LOG ai tạo KOL/mark paid/reverse; (b) DEACTIVATE KOL (API+UI); (c) REVERSE-REASON (refund/chargeback/manual) cho kế toán. Build pass, đã deploy.' },
+    subtasks:[
+      {t:'Dựng + deploy admin.micropokermaster.com (repo riêng nolanlee91/mpm-admin, Vercel riêng, HTTPS)',done:true},
+      {t:'Sửa discount bug (bỏ ô discount, cố định 10%, response lấy coupon.percent_off thật)',done:true},
+      {t:'Thêm LIVE badge đỏ ở header chống bấm nhầm',done:true},
+      {t:'Sửa README (local dev chạy /api qua vite-dev-api.mjs)',done:true},
+      {t:'(để dành) Audit log — ai tạo KOL / mark paid / reverse',done:false},
+      {t:'(để dành) Deactivate KOL (API + UI)',done:false},
+      {t:'(để dành) Reverse-reason (refund/chargeback/manual) cho kế toán',done:false},
+    ],
+    fix:'Tool vận hành KOL TÁCH khỏi app khách. 3 việc "để dành" không blocker pilot solo — chỉ thêm khi bắt đầu trả tiền thật đều hoặc có nhiều admin.' },
 
   { id:'NEXT-1', sev:'feat', done:false, status:'CHỜ BẠN — KHÔNG PHẢI CODE', notes:'2026-06-24. Code đã xong hết; đây là việc cấu hình/giấy tờ/kinh doanh + migration + test tay còn lại.', title:'NEXT-STEPS để lên LIVE (việc của bạn, không cần code)',
-    desc:'(1) GOVERNING LAW: ✅ XONG (2026-06-22) — "the Province of British Columbia, Canada" trong Legal.jsx. (2) STRIPE LIVE: ✅ XONG (2026-06-24, xem GOLIVE-1) — account activated, product/Price live, sk_live (đã roll), webhook live + signing secret, env Vercel, redeploy, mua thật end-to-end OK. CÒN: thêm event invoice.paid vào webhook LIVE cho hoa hồng KOL (xem REF-1/REF-2). (3) TÙY: Custom domain Supabase (P2-4) — đã GÁC (email+password không lòi domain nữa). (4) NÊN: luật sư liếc Terms/Privacy trước khi bán public. (5) TỰ KIỂM: work permit cho thu nhập tự doanh không (nhập cư — không phải Stripe).',
-    files:['(✅ xong) migrations + invoice.paid webhook + drop delete_current_user','(còn) test tay: attribution · comp grant · payout view · 409 portal','(tùy) luật sư Terms/Privacy'],
-    fix:'✅ ĐÃ XONG (2026-06-24): chạy migration-4/5/6 (6 bảng OK) + drop public.delete_current_user trên LIVE DB (REVIEW-4) + bật event invoice.paid trên webhook LIVE (cho hoa hồng KOL) + dựng admin console (ADMIN-1). CÒN CHỜ BẠN TEST TAY (không phải code): (a) comp grant sống→Pro / hết hạn→Free+Go Pro; (b) ATTRIBUTION KOL bằng tiền thật — tạo TESTKOL trên admin console → mua → commission ≈ 216 cents → dọn; (c) payout view 4 trạng thái immature/mature/reversed/paid; (d) 409 ALREADY_SUBSCRIBED→Billing Portal. TÙY: luật sư liếc Terms/Privacy; tự kiểm work permit cho thu nhập tự doanh. Mở dialog hỏi Claude bất cứ bước nào khi làm.' },
+    desc:'Việc để lên LIVE thật — phần lớn là cấu hình/giấy tờ + test tay, KHÔNG phải code. Checklist:',
+    subtasks:[
+      {t:'GOVERNING LAW — "British Columbia, Canada" trong Legal.jsx',done:true},
+      {t:'STRIPE LIVE — account/product/Price live, sk_live (rolled), webhook+secret, env Vercel, mua thật end-to-end OK (GOLIVE-1)',done:true},
+      {t:'Chạy migration-4/5/6 (6 bảng OK)',done:true},
+      {t:'Drop public.delete_current_user trên LIVE DB (REVIEW-4)',done:true},
+      {t:'Bật event invoice.paid trên webhook LIVE',done:true},
+      {t:'Dựng admin console KOL (ADMIN-1)',done:true},
+      {t:'TEST: comp grant sống→Pro / hết hạn→Free+Go Pro',done:false},
+      {t:'TEST: attribution KOL tiền thật — TESTKOL → mua → commission ≈ 216 cents → dọn',done:false},
+      {t:'TEST: payout view 4 trạng thái (immature/mature/reversed/paid)',done:false},
+      {t:'TEST: 409 ALREADY_SUBSCRIBED → Billing Portal',done:false},
+      {t:'(tùy) Luật sư liếc Terms/Privacy trước khi bán public',done:false},
+      {t:'(tùy) Tự kiểm work permit cho thu nhập tự doanh (nhập cư)',done:false},
+    ],
+    fix:'Code cả app lẫn admin tool đều xong. Còn lại thuần test tay + quyết định kinh doanh — mở dialog hỏi Claude bất cứ bước nào khi làm.' },
 
   { id:'OK-1', sev:'ok', title:'Stakes ĐÚNG — định vị LIVE CASH (không phải lỗi)',
     desc:'Ban đầu reviewer giả định "micro = online cents (NL2–NL100)". Nhưng đối tượng là khán giả các kênh YouTube dạy LIVE CASH. Trong live, $1/$1, $1/$2, $1/$3 LÀ stakes thấp nhất (micro/low live) — $1/$2 là bàn entry-level ở hầu hết casino. Vậy STAKES_LIST hiện tại CHUẨN với đối tượng. Không cần sửa.',
@@ -474,8 +514,8 @@ function render(){
             <span class="status-pill ${stClass}">${s.status}</span>
           </div>
           <div class="desc">${it.desc}</div>
-          <div class="meta"><span class="lbl">📁 Files:</span>${it.files.map(f=>`<span>• <code>${f}</code></span>`).join('')}</div>
-          <div class="fix">💡 ${it.fix}</div>
+          ${Array.isArray(it.subtasks)&&it.subtasks.length?`<ul class="subtasks">${it.subtasks.map(st=>`<li class="${st.done?'st-done':''}"><span class="mk">${st.done?'✓':'○'}</span><span>${st.t}</span></li>`).join('')}</ul>`:''}
+          ${it.fix?`<div class="fix">💡 ${it.fix}</div>`:''}
           <div class="controls">
             <label style="font-size:.74rem;color:var(--muted)">Status:</label>
             <select data-id="${it.id}">${STATUSES.map(st=>`<option ${st===s.status?'selected':''}>${st}</option>`).join('')}</select>

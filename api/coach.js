@@ -269,6 +269,14 @@ export default async function handler(req, res) {
         isProUser = (activeStatus && notExpired) || comped
       }
 
+      // Pro-only modes (fix plan / session debrief): deny BEFORE reserving any quota,
+      // so a free/anon user who calls these directly never has a flash credit burned
+      // on a request we're going to 403 anyway. (The backstop check below the try also
+      // covers the no-service-role path where this whole block is skipped.)
+      if ((isLeakFix || isDebrief) && !isProUser) {
+        return res.status(403).json({ error: 'Fix plans and session debriefs are a Pro feature. Upgrade to unlock them.' })
+      }
+
       if (isTranscribe) {
         // Voice transcription (flash, cheap) does NOT count against the analysis cap —
         // a voice hand should equal a typed hand. It gets its OWN tiered per-user cap

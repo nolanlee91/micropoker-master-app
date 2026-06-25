@@ -163,11 +163,15 @@ export default function Account() {
                   <div style={{ fontSize:'0.8rem', color:C.textMuted, lineHeight:1.6 }}>
                     This permanently deletes your account and all hands, sessions and data. This cannot be undone.
                   </div>
-                  {isPro && (
+                  {hasSubscription ? (
                     <div style={{ fontSize:'0.8rem', color:C.red, lineHeight:1.6 }}>
                       Your Pro subscription will be canceled immediately. Remaining subscription time is non-refundable.
                     </div>
-                  )}
+                  ) : complimentaryUntil ? (
+                    <div style={{ fontSize:'0.8rem', color:C.red, lineHeight:1.6 }}>
+                      Your complimentary Pro access will end immediately.
+                    </div>
+                  ) : null}
                   <div style={{ display:'flex', gap:'8px' }}>
                     <button
                       onClick={() => setConfirming(false)}

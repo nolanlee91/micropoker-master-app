@@ -148,20 +148,14 @@ begin
 end;
 $$;
 
--- ── 5. Account deletion (required by the App Store) ──────────
--- Lets a signed-in user permanently delete their own account.
--- Deleting the auth.users row cascades to profiles, sessions and
--- hand_history (all declared `on delete cascade`).
-create or replace function public.delete_current_user()
-returns void
-language plpgsql
-security definer
-set search_path = public, auth
-as $$
-begin
-  delete from auth.users where id = auth.uid();
-end;
-$$;
-
-revoke all on function public.delete_current_user() from public, anon;
-grant execute on function public.delete_current_user() to authenticated;
+-- ── 5. Account deletion ──────────────────────────────────────
+-- DEPRECATED + REMOVED. This used to be a SECURITY DEFINER RPC that any signed-in
+-- user could call to delete their own auth.users row. The problem: it deleted the
+-- account WITHOUT cancelling the user's Stripe subscription → an orphaned sub kept
+-- billing a card for an account that no longer exists. Deletion now goes through
+-- api/delete-account.js, which cancels Stripe FIRST (fail-closed) and only then
+-- removes the user via the service role. Drop the old RPC so a direct
+-- Supabase/console call can't reopen the orphan-subscription hole, and so
+-- re-running this migration never recreates it. DROP removes the grant too, and
+-- `if exists` keeps it idempotent on a fresh database.
+drop function if exists public.delete_current_user();

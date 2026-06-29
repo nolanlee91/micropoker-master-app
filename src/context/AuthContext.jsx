@@ -24,7 +24,11 @@ export function AuthProvider({ children }) {
     // early as possible, then stamp it once we have a session (anon or real).
     captureAttribution()
     const stampOnce = (s) => {
-      if (!s?.access_token || stamped.current) return
+      // Stamp ONLY anonymous visitors. A real/returning sign-in is not a new
+      // acquisition — stamping it would create a bogus '(none)' row and inflate the
+      // signup count. The genuine signup is recorded by the 'link' call in
+      // signUpWithPassword, attributed to the channel that first brought the guest.
+      if (!s?.access_token || !s.user?.is_anonymous || stamped.current) return
       stamped.current = true
       trackAttribution({ token: s.access_token, mode: 'stamp' })
     }

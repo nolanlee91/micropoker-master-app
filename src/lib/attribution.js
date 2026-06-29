@@ -7,13 +7,13 @@
 const FIRST_KEY = 'mpm-attr-first'
 const LAST_KEY  = 'mpm-attr-last'
 
-// Read the current URL's attribution signal into a touch, or null if there is
-// nothing worth recording (no utm source AND no forwarded/real referrer). We don't
-// want a row for every organic visitor — only attributed ones.
+// Read the current URL's attribution signal into a touch. EVERY visit is recorded —
+// visits with no utm_source (typed-in / untagged links) land in the '(none)' funnel
+// bucket, so the direct/organic baseline shows alongside the tagged channels.
 function readTouch() {
   try {
     const p = new URLSearchParams(window.location.search)
-    const touch = {
+    return {
       source:       p.get('utm_source')   || null,
       medium:       p.get('utm_medium')   || null,
       campaign:     p.get('utm_campaign') || null,
@@ -22,8 +22,6 @@ function readTouch() {
       landing_path: p.get('mpm_lp')       || (window.location.pathname + window.location.search),
       captured_at:  new Date().toISOString(),
     }
-    if (!touch.source && !touch.referrer) return null
-    return touch
   } catch { return null }
 }
 

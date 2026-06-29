@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
+import { captureAttribution, trackAttribution } from '../lib/attribution'
 
 const AuthContext = createContext(null)
 
@@ -16,11 +17,22 @@ export function AuthProvider({ children }) {
   const [showMigrate, setShowMigrate] = useState(false)
   const [showLogin, setShowLogin] = useState(false) // on-demand login overlay (header "Sign in")
   const [showRecovery, setShowRecovery] = useState(false) // password-reset screen (from email link)
+  const stamped = useRef(false) // one marketing-attribution stamp per app load
 
   useEffect(() => {
+    // Capture marketing attribution (utm_*/referrer forwarded from the landing) as
+    // early as possible, then stamp it once we have a session (anon or real).
+    captureAttribution()
+    const stampOnce = (s) => {
+      if (!s?.access_token || stamped.current) return
+      stamped.current = true
+      trackAttribution({ token: s.access_token, mode: 'stamp' })
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setSession(session)
+        stampOnce(session)
         // Migration prompt only matters for real accounts, not the silent anon user.
         if (!session.user?.is_anonymous) checkMigration()
       } else {
@@ -44,6 +56,7 @@ export function AuthProvider({ children }) {
       // fires this event — show the "set a new password" screen.
       if (event === 'PASSWORD_RECOVERY') setShowRecovery(true)
       setSession(session)
+      if (session) stampOnce(session)
       if (session && !session.user?.is_anonymous) checkMigration()
     })
 
@@ -180,6 +193,13 @@ export function AuthProvider({ children }) {
         } catch { /* retry, then give up — account still created */ }
       }
     }
+    // Carry marketing attribution onto the new account (best-effort, not awaited) so
+    // the funnel can tie this signup back to the channel that first brought the guest
+    // in. Uses the still-valid guest token, like the migrate call above.
+    if (!result.error && newId && guestToken && newId !== guestId) {
+      trackAttribution({ token: guestToken, mode: 'link', targetUserId: newId })
+    }
+
     return { ...result, guestDataMigrated }
   }
 

@@ -29,14 +29,24 @@ function load(key) {
   try { return JSON.parse(localStorage.getItem(key) || 'null') } catch { return null }
 }
 
-// Capture this visit. first-touch is written once; last-touch overwrites on each
-// attributed visit. Safe to call on every load.
+// Does this visit carry a campaign signal — a utm_source or a forwarded/external
+// referrer? A plain direct open (e.g. launching the PWA from the home screen) has
+// neither, and must NOT overwrite the channel that last brought the user.
+function hasSignal(touch) {
+  return !!(touch && (touch.source || touch.referrer))
+}
+
+// Capture this visit.
+//   FIRST-touch: written once — even a direct first visit (source null → '(none)').
+//   LAST-touch:  overwritten ONLY when the visit has a campaign signal, so opening
+//                the app directly tomorrow doesn't wipe the last real channel.
 export function captureAttribution() {
   const touch = readTouch()
-  if (touch) {
-    if (!load(FIRST_KEY)) {
-      try { localStorage.setItem(FIRST_KEY, JSON.stringify(touch)) } catch {}
-    }
+  if (!touch) return
+  if (!load(FIRST_KEY)) {
+    try { localStorage.setItem(FIRST_KEY, JSON.stringify(touch)) } catch {}
+  }
+  if (hasSignal(touch)) {
     try { localStorage.setItem(LAST_KEY, JSON.stringify(touch)) } catch {}
   }
 }
